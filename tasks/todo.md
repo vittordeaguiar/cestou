@@ -12,8 +12,8 @@
 - [x] Aplicar a migration do zero em PostgreSQL 17 e atualizar os tipos TypeScript do schema.
 - [x] Executar format check, lint, typecheck, testes e build.
 - [x] Revisar o diff final, documentar evidências e registrar aprendizados relevantes.
-- [ ] Commitar, publicar a branch e abrir um PR para `main`.
-- [ ] Mover V-39 para Code Review e comentar o resultado e o escopo deixado para V-40.
+- [x] Commitar, publicar a branch e abrir um PR para `main`.
+- [x] Mover V-39 para Code Review e comentar o resultado e o escopo deixado para V-40.
 
 ## Review
 
@@ -24,3 +24,5 @@
 - `supabase db reset`, pgTAP e geração automática dos tipos ficaram bloqueados porque o Docker daemon não estava ativo e a abertura do Docker Desktop não foi autorizada.
 - `supabase db lint` conectou ao PostgreSQL temporário, mas a extensão `pgsql_check` não está disponível na instalação Homebrew.
 - Nenhuma migration ou estrutura foi aplicada ao banco remoto.
+- PR aberto: <https://github.com/vittordeaguiar/cestou/pull/2>.
+- V-39 movida para Code Review, com evidências e riscos da V-40 registrados em comentário.
