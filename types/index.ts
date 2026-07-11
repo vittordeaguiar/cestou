@@ -1,3 +1,5 @@
 /** Shared domain types for Cestou. */
 
-export type ItemCategory = "mercado" | "farmacia";
+import type { Database } from "@/types/database";
+
+export type ItemCategory = Database["public"]["Enums"]["item_category"];
