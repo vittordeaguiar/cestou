@@ -14,6 +14,7 @@ App web mobile-first para lista de compras compartilhada com estimativa de gasto
 ```bash
 npm install
 cp .env.example .env.local
+# Fill NEXT_PUBLIC_SUPABASE_* and SUPABASE_SERVICE_ROLE_KEY
 npm run dev
 ```
 
@@ -25,12 +26,14 @@ npm run dev
 | `npm run build`  | Build de produção           |
 | `npm run lint`   | ESLint                      |
 | `npm run format` | Prettier                    |
+| `npm test`       | Vitest (CI)                 |
 
 ## Estrutura
 
 ```
-app/          # Rotas e layouts (App Router)
-components/   # Componentes React
-lib/          # Utilitários e clients
-types/        # Tipos TypeScript compartilhados
+app/                 # Rotas e layouts (App Router)
+components/          # Componentes React
+lib/supabase/        # Browser, server, admin clients + session middleware
+types/               # Tipos TypeScript compartilhados
+.cursor/rules/       # Regras do agente / padrões do projeto
 ```
