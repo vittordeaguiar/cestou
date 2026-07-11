@@ -1,0 +1,41 @@
+---
+description: Language policy — English codebase, pt-BR user-facing copy only
+alwaysApply: true
+---
+
+# Language
+
+## English (default)
+
+Use English for:
+
+- Source code identifiers (variables, functions, types, files, folders)
+- Comments and JSDoc
+- Commit messages, PR titles/bodies, and branch names (except the `V-<n>` prefix)
+- Linear implementation comments from the agent (unless asked otherwise)
+- Test descriptions (`it("returns unauthorized when session is missing")`)
+- Logs and internal error codes
+
+## Portuguese (pt-BR) — user-facing only
+
+Use pt-BR **only** for text shown to end users:
+
+- UI labels, buttons, placeholders, empty states
+- Toast / alert messages
+- Auth emails and user notifications (when we own the copy)
+- `metadata` title/description when user-visible
+
+## Examples
+
+```ts
+// ✅ GOOD
+const itemName = formData.get("name");
+throw new Error("Missing Supabase session"); // internal
+return { error: "Não foi possível salvar o item." }; // user-facing
+
+// ❌ BAD
+const nomeItem = formData.get("name");
+throw new Error("Sessão do Supabase ausente"); // internal in pt-BR
+```
+
+Do not mix languages in the same identifier or file naming scheme.

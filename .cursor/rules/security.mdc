@@ -1,0 +1,33 @@
+---
+description: Security baseline for Cestou (secrets, auth, RLS, server-only)
+alwaysApply: true
+---
+
+# Security
+
+## Secrets and env
+
+- Never commit secrets (`.env.local`, keys, tokens, service role).
+- Only `NEXT_PUBLIC_*` may be exposed to the browser.
+- `SUPABASE_SERVICE_ROLE_KEY`, `DEEPSEEK_API_KEY`, and `FIRECRAWL_API_KEY` are **server-only**.
+- Keep `.env.example` as placeholders only — never real values.
+
+## Supabase access
+
+- Prefer the anon/publishable key + user session on the client/SSR path.
+- Use the service role only in trusted server code (Route Handlers / Server Actions) when RLS cannot cover the case — document why.
+- Assume RLS is mandatory on user data tables; do not bypass it casually.
+
+## App boundaries
+
+- Firecrawl and DeepSeek must run only on the server (never from Client Components).
+- Do not log secrets, access tokens, or full PII.
+- Validate and sanitize all user input at the boundary (Server Actions / Route Handlers).
+- Prefer least privilege: scope MCP / tooling to the Cestou project; avoid production data when experimenting.
+
+## Checklist before finishing a task
+
+- [ ] No secret in git diff
+- [ ] No service role imported into client bundles
+- [ ] Auth-sensitive routes protected (middleware / server checks)
+- [ ] External API keys used only server-side

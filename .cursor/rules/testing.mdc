@@ -1,0 +1,37 @@
+---
+description: Testing requirements — PRs must pass the test pipeline before merge to main
+alwaysApply: true
+---
+
+# Testing
+
+## Expectation
+
+CI will run tests and **block merge to `main`** if they fail. Treat tests as part of the definition of done for each issue.
+
+## What to add
+
+For each feature/fix PR, include automated tests that cover the change:
+
+- **Unit** — pure logic in `lib/`, validators, mappers, price-estimate helpers
+- **Integration / component** — critical UI flows when behavior is non-trivial
+- **Server Actions / Route Handlers** — authz checks, validation, happy path + failure path
+
+Prefer testing behavior over implementation details.
+
+## Conventions
+
+- Test files in English (`*.test.ts`, `*.test.tsx`, or colocated `__tests__/`)
+- Arrange–Act–Assert; one clear assertion focus per test when practical
+- Mock external services (Supabase, Firecrawl, DeepSeek) at the boundary — do not hit real APIs in CI
+- Do not skip tests to greenwash CI (`it.skip` / `xit` only with an explicit follow-up issue)
+
+## Before opening/updating a PR
+
+1. Add or update tests for the issue scope
+2. Run the project test script locally (once configured) and fix failures
+3. Mention in the PR summary what was tested and what remains manual
+
+## Bootstrap note
+
+Until the test runner is configured in the repo, still write tests in the agreed layout so the pipeline can adopt them without rework. If the runner is missing for the current issue, call that out in the PR and keep tests ready to run.

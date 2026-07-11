@@ -1,0 +1,37 @@
+---
+description: Next.js App Router + TypeScript patterns for performance and readability
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Next.js + TypeScript
+
+## Rendering model
+
+- Default to **Server Components**.
+- Add `"use client"` only when needed (state, effects, browser APIs, event handlers).
+- Push client boundaries down; keep data fetching on the server when possible.
+
+## Mutations and data
+
+- Prefer **Server Actions** or Route Handlers for mutations and privileged work.
+- Do not call privileged APIs (Supabase service role, Firecrawl, DeepSeek) from Client Components.
+- Colocate feature UI under `app/`; shared UI under `components/`; shared logic under `lib/`; shared types under `types/`.
+
+## TypeScript
+
+- Keep `strict` mode; avoid `any` (use `unknown` + narrowing).
+- Prefer explicit return types on exported functions and shared utilities.
+- Use path aliases: `@/components`, `@/lib`, `@/types`.
+
+## Performance and UX
+
+- Mobile-first layouts; touch targets and safe areas matter.
+- Avoid unnecessary client JS; lazy-load heavy client-only pieces when useful.
+- Handle loading / empty / error states explicitly for user flows.
+
+## Readability
+
+- Small focused modules over large catch-all files.
+- Name files and exports by intent (`create-group-action.ts`, not `helpers2.ts`).
+- Match existing project style (Prettier + ESLint); do not reformat unrelated files.

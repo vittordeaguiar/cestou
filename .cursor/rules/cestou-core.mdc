@@ -1,0 +1,55 @@
+---
+description: Cestou workflow — Linear tasks, branches, PRs, semantic commits
+alwaysApply: true
+---
+
+# Cestou core workflow
+
+## Scope
+
+- Implement **one Linear issue per branch**.
+- Stay inside the issue scope; out-of-scope work → new issue or ask first.
+- Prefer small, reviewable diffs over large mixed PRs.
+
+## Branch naming
+
+Use the Linear-suggested branch, or:
+
+```text
+vittodeaguiar/v-<number>-<short-kebab-title>
+```
+
+Example: `vittodeaguiar/v-38-setup-do-supabase-projeto-env-vars-client-sdk`
+
+Never commit feature work directly on `main`.
+
+## PR title
+
+Prefix with the issue id + semantic type:
+
+```text
+V-38: feat: set up Supabase clients and env vars
+```
+
+Format: `V-<number>: <type>: <short summary>`
+
+## Commits (Conventional Commits)
+
+```text
+<type>(optional-scope): <summary>
+```
+
+Allowed types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `style`, `perf`, `ci`
+
+Examples:
+
+- `feat(supabase): add browser and server clients`
+- `fix(auth): redirect unauthenticated users to login`
+- `test(list): cover add item validation`
+- `chore: bump typescript to 6.0.3`
+
+## After implementation
+
+1. Leave the issue in **Code Review** (do not mark Done unless asked).
+2. Summarize what changed, how to test, and risks.
+3. Open/update the PR against `main` with the prefixed title.

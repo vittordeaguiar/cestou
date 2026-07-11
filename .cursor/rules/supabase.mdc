@@ -1,0 +1,41 @@
+---
+description: Supabase clients, migrations, RLS, and MCP usage for Cestou
+globs: "{lib/**,**/supabase/**,supabase/**,**/*supabase*.{ts,tsx},**/*.sql}"
+alwaysApply: false
+---
+
+# Supabase
+
+## Clients
+
+- Use `@supabase/ssr` for App Router (cookies / session).
+- Split helpers clearly:
+  - browser client → Client Components only
+  - server client → Server Components, Server Actions, Route Handlers
+  - admin/service client → server-only, rare cases
+- Do not create a single shared client used in both browser and server.
+
+## Env
+
+Required names (keep in sync with `.env.example`):
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+
+## Schema and migrations
+
+- Prefer `apply_migration` (MCP) or versioned SQL migrations for DDL.
+- Do not use `execute_sql` for schema changes when a migration is appropriate.
+- Before changing schema: `list_tables` / inspect existing structure.
+- Never hardcode generated UUIDs in migrations meant to be re-run.
+
+## RLS and data access
+
+- Every user-facing table needs RLS policies aligned with group membership.
+- Query as the authenticated user whenever possible; avoid service role for CRUD that RLS should enforce.
+- After schema/policy changes, check advisors (`get_advisors`) when available.
+
+## Types
+
+- Prefer generated DB types (`generate_typescript_types`) over hand-rolled table shapes when the schema stabilizes.
