@@ -7,31 +7,31 @@ import {
 } from "@/lib/supabase/env";
 
 describe("getSupabasePublicEnv", () => {
-  it("returns url and anon key when configured", () => {
-    expect(
-      getSupabasePublicEnv({
-        NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
-      }),
-    ).toEqual({
-      url: "https://example.supabase.co",
-      anonKey: "anon-key",
-    });
-  });
-
-  it("falls back to the publishable key when anon key is missing", () => {
+  it("returns url and publishable key when configured", () => {
     expect(
       getSupabasePublicEnv({
         NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-key",
+      }),
+    ).toEqual({
+      url: "https://example.supabase.co",
+      anonKey: "publishable-key",
+    });
+  });
+
+  it("falls back to the anon key when publishable key is missing", () => {
+    expect(
+      getSupabasePublicEnv({
+        NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
       }).anonKey,
-    ).toBe("publishable-key");
+    ).toBe("anon-key");
   });
 
   it("throws when the public url is missing", () => {
     expect(() =>
       getSupabasePublicEnv({
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "publishable-key",
       }),
     ).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
   });

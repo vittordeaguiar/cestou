@@ -39,12 +39,12 @@ export function getSupabaseSiteUrl(env: EnvironmentVariables = process.env): str
 export function getSupabasePublicEnv(env: EnvironmentVariables = process.env): SupabasePublicEnv {
   const url = readRequired("NEXT_PUBLIC_SUPABASE_URL", env.NEXT_PUBLIC_SUPABASE_URL);
 
-  const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const anonKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   return {
     url,
     anonKey: readRequired(
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)",
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)",
       anonKey,
     ),
   };
