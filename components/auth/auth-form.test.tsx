@@ -11,7 +11,6 @@ const { loginAction, routerReplace, toastSuccess } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/app/auth/actions", () => ({
-  initialAuthActionState: { status: "idle", fieldErrors: {} },
   loginAction,
   signUpAction: vi.fn(),
 }));

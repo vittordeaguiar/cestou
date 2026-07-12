@@ -2,11 +2,12 @@
 
 import { useActionState, useEffect, useState, type FormEvent } from "react";
 
-import { initialProfileActionState, updateProfileNameAction } from "@/app/profile/actions";
+import { updateProfileNameAction } from "@/app/profile/actions";
 import { Button } from "@/components/ui/button";
 import { FieldInput } from "@/components/ui/field-input";
-import { toast } from "@/lib/toast";
+import { initialProfileActionState } from "@/lib/auth/action-state";
 import { validateProfileName } from "@/lib/auth/validation";
+import { toast } from "@/lib/toast";
 
 type ProfileNameFormProps = {
   displayName: string;

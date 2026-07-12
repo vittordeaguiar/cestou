@@ -3,8 +3,9 @@
 import { useActionState } from "react";
 import { LogOutIcon } from "lucide-react";
 
-import { initialAuthActionState, logoutAction } from "@/app/auth/actions";
+import { logoutAction } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
+import { initialAuthActionState } from "@/lib/auth/action-state";
 
 function LogoutButton() {
   const [state, formAction, pending] = useActionState(logoutAction, initialAuthActionState);

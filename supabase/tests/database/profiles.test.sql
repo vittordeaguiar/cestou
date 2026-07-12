@@ -21,9 +21,6 @@ select is(
 insert into auth.users (id)
 values ('60000000-0000-0000-0000-000000000002');
 
-grant usage on schema public to authenticated;
-grant select, update on public.profiles to authenticated;
-
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '60000000-0000-0000-0000-000000000001', true);
 select set_config(

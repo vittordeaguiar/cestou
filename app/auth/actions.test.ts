@@ -10,12 +10,8 @@ vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("@/lib/supabase/env", () => ({ getSupabaseSiteUrl }));
 vi.mock("next/navigation", () => ({ redirect }));
 
-import {
-  initialAuthActionState,
-  loginAction,
-  logoutAction,
-  signUpAction,
-} from "@/app/auth/actions";
+import { loginAction, logoutAction, signUpAction } from "@/app/auth/actions";
+import { initialAuthActionState } from "@/lib/auth/action-state";
 
 function formData(values: Record<string, string>): FormData {
   const data = new FormData();

@@ -5,17 +5,13 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState, type FormEvent } from "react";
 import { LogInIcon, UserPlusIcon } from "lucide-react";
 
-import {
-  initialAuthActionState,
-  loginAction,
-  signUpAction,
-  type AuthActionState,
-} from "@/app/auth/actions";
+import { loginAction, signUpAction } from "@/app/auth/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FieldInput } from "@/components/ui/field-input";
-import { toast } from "@/lib/toast";
+import { initialAuthActionState, type AuthActionState } from "@/lib/auth/action-state";
 import { type FieldErrors, validateLogin, validateSignUp } from "@/lib/auth/validation";
+import { toast } from "@/lib/toast";
 
 type AuthMode = "login" | "sign-up";
 
