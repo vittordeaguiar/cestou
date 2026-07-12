@@ -206,7 +206,11 @@ as $$
 declare
   affected_group_id uuid;
 begin
-  affected_group_id := coalesce(new.group_id, old.group_id);
+  if tg_op = 'DELETE' then
+    affected_group_id := old.group_id;
+  else
+    affected_group_id := new.group_id;
+  end if;
 
   if exists (
     select 1 from public.groups where id = affected_group_id
