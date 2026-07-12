@@ -123,13 +123,16 @@ select is(
   'B cannot remove the owner'
 );
 select is((select count(*)::integer from public.price_estimates), 1, 'B can read group estimates');
-select throws_ok(
-  $$
-    update public.price_estimates
-    set total_amount = 1
-  $$,
-  '42501',
-  null,
+select is(
+  (
+    with changed as (
+      update public.price_estimates
+      set total_amount = 1
+      returning 1
+    )
+    select count(*)::integer from changed
+  ),
+  0,
   'B cannot write an estimate from the client'
 );
 select throws_ok(
