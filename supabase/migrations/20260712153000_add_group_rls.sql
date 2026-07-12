@@ -166,7 +166,7 @@ set search_path = ''
 as $$
 declare
   current_user_id uuid := auth.uid();
-  current_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
+  current_email text := lower(btrim(coalesce(auth.jwt() ->> 'email', '')));
   invitation public.group_invites;
 begin
   if current_user_id is null or current_email = '' then
@@ -305,7 +305,7 @@ create policy group_invites_select_owner_or_recipient on public.group_invites
 for select to authenticated
 using (
   public.is_group_owner(group_id)
-  or lower(btrim(email)) = lower(coalesce(auth.jwt() ->> 'email', ''))
+  or lower(btrim(email)) = lower(btrim(coalesce(auth.jwt() ->> 'email', '')))
 );
 
 create policy lists_select_members on public.lists
