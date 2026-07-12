@@ -19,6 +19,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -223,8 +224,12 @@ function DesignSystemShowcase() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline">Cancelar</Button>
-                  <Button variant="destructive">Remover</Button>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancelar</Button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <Button variant="destructive">Remover</Button>
+                  </DialogClose>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
