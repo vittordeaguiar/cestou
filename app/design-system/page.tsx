@@ -1,7 +1,6 @@
 /**
  * Internal visual showcase for the Cestou design system (V-41).
- * Not a product feature. Hidden in production via notFound().
- * Can be removed or gated by auth later (e.g. V-44 middleware).
+ * Not a product feature. Blocked in production by the auth proxy and notFound().
  */
 import { notFound } from "next/navigation";
 
