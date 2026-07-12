@@ -138,8 +138,8 @@ select throws_ok(
     set list_id = '30000000-0000-0000-0000-000000000012'
     where id = '30000000-0000-0000-0000-000000000001'
   $$,
-  '42501',
-  null,
+  '22000',
+  'list_items.list_id is immutable',
   'B cannot cross groups by changing list_id'
 );
 select is(

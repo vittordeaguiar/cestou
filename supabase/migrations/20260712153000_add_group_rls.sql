@@ -248,6 +248,10 @@ begin
     raise exception 'list_items.created_by is immutable' using errcode = '22000';
   end if;
 
+  if new.list_id is distinct from old.list_id then
+    raise exception 'list_items.list_id is immutable' using errcode = '22000';
+  end if;
+
   return new;
 end;
 $$;
