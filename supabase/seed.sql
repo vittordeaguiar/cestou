@@ -1,0 +1,1 @@
+-- Intentionally empty. Application data is created through product flows.

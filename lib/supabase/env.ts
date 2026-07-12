@@ -8,6 +8,8 @@ export type SupabasePublicEnv = {
   anonKey: string;
 };
 
+type EnvironmentVariables = Record<string, string | undefined>;
+
 function readRequired(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
@@ -17,7 +19,7 @@ function readRequired(name: string, value: string | undefined): string {
 }
 
 /** Public Supabase URL + anon/publishable key (safe for the browser). */
-export function getSupabasePublicEnv(env: NodeJS.ProcessEnv = process.env): SupabasePublicEnv {
+export function getSupabasePublicEnv(env: EnvironmentVariables = process.env): SupabasePublicEnv {
   const url = readRequired("NEXT_PUBLIC_SUPABASE_URL", env.NEXT_PUBLIC_SUPABASE_URL);
 
   const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -32,6 +34,6 @@ export function getSupabasePublicEnv(env: NodeJS.ProcessEnv = process.env): Supa
 }
 
 /** Service role key — never expose to the browser. */
-export function getSupabaseServiceRoleKey(env: NodeJS.ProcessEnv = process.env): string {
+export function getSupabaseServiceRoleKey(env: EnvironmentVariables = process.env): string {
   return readRequired("SUPABASE_SERVICE_ROLE_KEY", env.SUPABASE_SERVICE_ROLE_KEY);
 }
