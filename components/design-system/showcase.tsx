@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  DialogClose,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -223,7 +224,9 @@ function DesignSystemShowcase() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline">Cancelar</Button>
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancelar</Button>
+                  </DialogClose>
                   <Button variant="destructive">Remover</Button>
                 </DialogFooter>
               </DialogContent>
