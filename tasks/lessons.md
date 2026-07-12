@@ -4,3 +4,4 @@
 - Verifique o daemon do Docker antes de planejar validações da Supabase CLI. Quando ele não estiver disponível, um PostgreSQL temporário ainda pode provar sintaxe e invariantes, mas não substitui integralmente `supabase db reset`, pgTAP, `pgsql_check` ou geração automática de tipos.
 - No TypeScript 6, helpers que consomem somente variáveis específicas não devem exigir `NodeJS.ProcessEnv`; um mapa de strings opcionais mantém testes com ambientes parciais corretamente tipados.
 - Em policies que consultam a própria tabela, use helpers `SECURITY DEFINER` de escopo mínimo para evitar recursão de RLS; cada helper precisa de `search_path` explícito e privilégios de execução revisados.
+- Não torne uma variável nova obrigatória no helper compartilhado de clientes se o proxy existente a chama em toda requisição. Valide configurações específicas no helper próprio, para manter rotas públicas e renovação de sessão compatíveis com ambientes já configurados.

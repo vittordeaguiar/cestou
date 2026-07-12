@@ -50,8 +50,9 @@ select throws_ok(
 insert into auth.users (id)
 values ('20000000-0000-0000-0000-000000000001');
 
-insert into public.profiles (id, display_name)
-values ('20000000-0000-0000-0000-000000000001', 'Pessoa');
+update public.profiles
+set display_name = 'Pessoa'
+where id = '20000000-0000-0000-0000-000000000001';
 
 insert into public.group_members (group_id, user_id, role)
 values (

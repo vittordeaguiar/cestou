@@ -20,8 +20,11 @@ alwaysApply: false
 Required names (keep in sync with `.env.example`):
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SITE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only)
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` remains an accepted legacy fallback in the clients; prefer the publishable key.
 
 ## Schema and migrations
 
