@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getSupabasePublicEnv, getSupabaseServiceRoleKey } from "@/lib/supabase/env";
+import {
+  getSupabasePublicEnv,
+  getSupabaseServiceRoleKey,
+  getSupabaseSiteUrl,
+} from "@/lib/supabase/env";
 
 describe("getSupabasePublicEnv", () => {
   it("returns url and anon key when configured", () => {
@@ -30,6 +34,20 @@ describe("getSupabasePublicEnv", () => {
         NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
       }),
     ).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
+  });
+
+  it("validates the public site URL without exposing its value", () => {
+    expect(() => getSupabaseSiteUrl({})).toThrow(/NEXT_PUBLIC_SITE_URL/);
+
+    expect(() =>
+      getSupabaseSiteUrl({
+        NEXT_PUBLIC_SITE_URL: "ftp://example.com",
+      }),
+    ).toThrow(/NEXT_PUBLIC_SITE_URL/);
+
+    expect(getSupabaseSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://cestou-kohl.vercel.app" })).toBe(
+      "https://cestou-kohl.vercel.app/",
+    );
   });
 });
 
