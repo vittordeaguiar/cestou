@@ -2,20 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
-import { type FieldErrors, validateProfileName } from "@/lib/auth/validation";
+import { type ProfileActionState } from "@/lib/auth/action-state";
+import { validateProfileName } from "@/lib/auth/validation";
 import { createClient } from "@/lib/supabase/server";
-
-export type ProfileActionState = {
-  status: "idle" | "error" | "success";
-  fieldErrors: FieldErrors<"name">;
-  message?: string;
-  name?: string;
-};
-
-export const initialProfileActionState: ProfileActionState = {
-  status: "idle",
-  fieldErrors: {},
-};
 
 export async function updateProfileNameAction(
   _previousState: ProfileActionState,

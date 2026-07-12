@@ -2,22 +2,11 @@
 
 import { redirect } from "next/navigation";
 
+import { initialAuthActionState, type AuthActionState } from "@/lib/auth/action-state";
 import { getSafeNext } from "@/lib/auth/redirect";
 import { type FieldErrors, validateLogin, validateSignUp } from "@/lib/auth/validation";
 import { getSupabaseSiteUrl } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
-
-export type AuthActionState = {
-  status: "idle" | "error" | "success";
-  fieldErrors: FieldErrors;
-  message?: string;
-  redirectTo?: string;
-};
-
-export const initialAuthActionState: AuthActionState = {
-  status: "idle",
-  fieldErrors: {},
-};
 
 function actionError(message: string, fieldErrors: FieldErrors = {}): AuthActionState {
   return { status: "error", fieldErrors, message };

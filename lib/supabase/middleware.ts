@@ -1,11 +1,27 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { resolveAuthNavigation } from "@/lib/auth/routes";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
+function copySessionCookies(from: NextResponse, to: NextResponse): NextResponse {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie);
+  });
+
+  return to;
+}
+
+function redirectWithSession(url: URL, sessionResponse: NextResponse): NextResponse {
+  return copySessionCookies(sessionResponse, NextResponse.redirect(url));
+}
+
+function notFoundWithSession(sessionResponse: NextResponse): NextResponse {
+  return copySessionCookies(sessionResponse, new NextResponse(null, { status: 404 }));
+}
+
 /**
- * Refreshes the Auth session cookies on each matched request.
- * Route protection redirects belong in a later auth proxy issue (V-44).
+ * Refreshes Auth session cookies and enforces the authenticated route matrix.
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -40,7 +56,22 @@ export async function updateSession(request: NextRequest) {
   });
 
   // Validates JWT / refreshes session; do not use getSession() for auth checks.
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
+  const isAuthenticated = typeof data?.claims?.sub === "string";
+
+  const navigation = resolveAuthNavigation({
+    pathname: request.nextUrl.pathname,
+    search: request.nextUrl.search,
+    isAuthenticated,
+  });
+
+  if (navigation.type === "redirect") {
+    return redirectWithSession(new URL(navigation.location, request.url), supabaseResponse);
+  }
+
+  if (navigation.type === "not-found") {
+    return notFoundWithSession(supabaseResponse);
+  }
 
   return supabaseResponse;
 }

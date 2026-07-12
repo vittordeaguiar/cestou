@@ -8,7 +8,8 @@ const { createClient, revalidatePath } = vi.hoisted(() => ({
 vi.mock("@/lib/supabase/server", () => ({ createClient }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 
-import { initialProfileActionState, updateProfileNameAction } from "@/app/profile/actions";
+import { updateProfileNameAction } from "@/app/profile/actions";
+import { initialProfileActionState } from "@/lib/auth/action-state";
 
 function formData(name: string): FormData {
   const data = new FormData();
