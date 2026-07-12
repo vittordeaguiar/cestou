@@ -1,28 +1,22 @@
-# V-39 — Modelagem do banco de dados
+# V-40 — Configuração de RLS (políticas por grupo)
 
 ## Plano
 
-- [x] Ler a issue V-39 no Linear e confirmar escopo e restrições.
-- [x] Criar uma branch local dedicada à issue.
-- [x] Inspecionar arquitetura, migrations, tipos e scripts existentes.
-- [x] Verificar se o schema já foi total ou parcialmente implementado.
-- [x] Validar com o usuário o diagnóstico, modelo, cascatas, riscos e SQL proposto.
-- [x] Adicionar a infraestrutura local versionada do Supabase e a migration inicial.
-- [x] Adicionar testes de integração SQL para constraints e invariantes do schema.
-- [x] Aplicar a migration do zero em PostgreSQL 17 e atualizar os tipos TypeScript do schema.
-- [x] Executar format check, lint, typecheck, testes e build.
-- [x] Revisar o diff final, documentar evidências e registrar aprendizados relevantes.
-- [x] Commitar, publicar a branch e abrir um PR para `main`.
-- [x] Mover V-39 para Code Review e comentar o resultado e o escopo deixado para V-40.
+- [x] Ler V-40 e a migration/schema entregues pela V-39.
+- [x] Criar a branch dedicada a partir da `main` atualizada.
+- [x] Definir papéis `owner` e `member`, operações privilegiadas e limites de acesso direto.
+- [x] Adicionar a migration de RLS, políticas e RPCs seguras.
+- [x] Criar testes de autorização para A, B, C e usuário sem grupo.
+- [x] Executar validações SQL, formatação, lint, testes, typecheck e build.
+- [x] Revisar o diff, registrar evidências e aprendizados.
+- [ ] Commitar, publicar a branch e abrir PR para `main`.
+- [ ] Mover V-40 para Code Review e comentar o resultado no Linear.
 
 ## Review
 
-- Migration aplicada do zero em um cluster PostgreSQL 17 temporário com contrato mínimo de `auth.users`.
-- Smoke tests SQL passaram para lista ativa, quantidade, categoria, membros, convites, estimativas e cascata.
-- Banco resultante: 7 tabelas públicas, 10 foreign keys, 19 índices e RLS desabilitada nas 7 tabelas.
-- Prettier dos arquivos da issue, ESLint, typecheck, Vitest (5 testes) e build Next.js passaram.
-- `supabase db reset`, pgTAP e geração automática dos tipos ficaram bloqueados porque o Docker daemon não estava ativo e a abertura do Docker Desktop não foi autorizada.
-- `supabase db lint` conectou ao PostgreSQL temporário, mas a extensão `pgsql_check` não está disponível na instalação Homebrew.
-- Nenhuma migration ou estrutura foi aplicada ao banco remoto.
-- PR aberto: <https://github.com/vittordeaguiar/cestou/pull/2>.
-- V-39 movida para Code Review, com evidências e riscos da V-40 registrados em comentário.
+- Migration aplicada em PostgreSQL 17 temporário com contrato mínimo de `auth.users`, `auth.uid()` e `auth.jwt()`.
+- Smoke tests confirmaram isolamento de leitura/escrita entre grupos, edição colaborativa, bloqueio de insert cruzado e RPCs de convite/transferência.
+- A suíte pgTAP cobre A, B, C, D e E, mas não pôde ser executada porque a extensão `pgtap` não está instalada; Supabase CLI e Docker também não estão disponíveis localmente.
+- Prettier passou para os arquivos formatáveis da issue; o comando global falha apenas pelo `handoff.md` não rastreado e preexistente. Arquivos SQL não têm parser configurado no Prettier.
+- ESLint e Vitest passaram (5 testes). O typecheck passou ao silenciar a depreciação preexistente de `baseUrl` com `--ignoreDeprecations 6.0`; o build passou ao executá-lo com acesso de rede para as fontes Geist.
+- Nenhuma migration foi aplicada ao banco remoto.

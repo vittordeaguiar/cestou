@@ -57,7 +57,7 @@ insert into public.group_members (group_id, user_id, role)
 values (
   '10000000-0000-0000-0000-000000000001',
   '20000000-0000-0000-0000-000000000001',
-  'admin'
+  'owner'
 );
 
 select throws_ok(

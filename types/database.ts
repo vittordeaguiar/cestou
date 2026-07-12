@@ -183,10 +183,35 @@ export type Database = {
       };
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      accept_group_invite: {
+        Args: { target_invite_id: string };
+        Returns: string;
+      };
+      cancel_group_invite: {
+        Args: { target_invite_id: string };
+        Returns: undefined;
+      };
+      create_group: {
+        Args: { group_name: string };
+        Returns: Database["public"]["Tables"]["groups"]["Row"];
+      };
+      create_group_invite: {
+        Args: {
+          invitation_expires_at: string;
+          invited_email: string;
+          target_group_id: string;
+        };
+        Returns: Database["public"]["Tables"]["group_invites"]["Row"];
+      };
+      transfer_group_ownership: {
+        Args: { target_group_id: string; target_user_id: string };
+        Returns: undefined;
+      };
+    };
     Enums: {
       group_invite_status: "pending" | "accepted" | "revoked" | "expired";
-      group_member_role: "admin" | "member";
+      group_member_role: "owner" | "member";
       item_category: "mercado" | "farmacia" | "outro";
       list_status: "active" | "archived";
     };
