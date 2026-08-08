@@ -1,6 +1,6 @@
 begin;
 
-select plan(6);
+select plan(7);
 
 insert into auth.users (id)
 values
@@ -77,6 +77,13 @@ select throws_ok(
   'P0001',
   'User already belongs to a group',
   'a user cannot create a second group in v1'
+);
+
+select throws_ok(
+  format('select public.create_group(%L)', repeat('a', 81)),
+  '22023',
+  'Group name must be at most 80 characters',
+  'create_group rejects names longer than 80 characters'
 );
 
 reset role;
