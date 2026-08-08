@@ -126,4 +126,46 @@ describe("ListItemsPanel", () => {
     expect(updateListItemAction).not.toHaveBeenCalled();
     expect(deleteListItemAction).not.toHaveBeenCalled();
   });
+
+  it("keeps delete reconciliation in the parent after optimistic removal", async () => {
+    const user = userEvent.setup();
+    deleteListItemAction.mockImplementation(async () => ({
+      status: "error",
+      fieldErrors: {},
+      message: "Não foi possível remover o item. Tente novamente.",
+    }));
+
+    render(
+      <ListItemsPanel
+        {...baseProps}
+        items={[
+          {
+            id: "item-1",
+            listId: "list-1",
+            name: "Arroz",
+            quantity: 2,
+            unit: "kg",
+            createdBy: "user-1",
+            createdAt: "2026-08-08T12:00:00.000Z",
+          },
+        ]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remover" }));
+    const confirmDelete = screen.getByRole("dialog").querySelector("button[data-variant='destructive']");
+    expect(confirmDelete).not.toBeNull();
+    await user.click(confirmDelete as HTMLElement);
+
+    await waitFor(() => {
+      expect(deleteListItemAction).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Arroz")).not.toBeNull();
+    });
+    expect(toastError).toHaveBeenCalledWith({
+      title: "Não foi possível remover o item. Tente novamente.",
+    });
+  });
 });

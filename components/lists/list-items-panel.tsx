@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useTransition,
   type Dispatch,
   type FormEvent,
   type SetStateAction,
@@ -110,11 +111,13 @@ function AddItemForm({
   listId,
   currentUserId,
   setItems,
+  trackLocalChange,
 }: {
   groupId: string;
   listId: string;
   currentUserId: string;
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
+  trackLocalChange: (itemId: string) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const itemIdInputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +166,7 @@ function AddItemForm({
       itemIdInputRef.current.value = itemId;
     }
     pendingItemIdRef.current = itemId;
+    trackLocalChange(itemId);
 
     setItems((current) =>
       optimisticCreateItem(current, {
@@ -212,10 +216,12 @@ function EditItemDialog({
   groupId,
   item,
   setItems,
+  trackLocalChange,
 }: {
   groupId: string;
   item: ListItemRow;
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
+  trackLocalChange: (itemId: string) => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const snapshotRef = useRef<ListItemRow | null>(null);
@@ -265,6 +271,7 @@ function EditItemDialog({
     }
 
     snapshotRef.current = item;
+    trackLocalChange(item.id);
     setItems((current) =>
       optimisticUpdateItem(current, item.id, {
         name: validated.name,
@@ -325,44 +332,14 @@ function EditItemDialog({
 }
 
 function DeleteItemDialog({
-  groupId,
   item,
-  setItems,
+  pending,
+  onConfirm,
 }: {
-  groupId: string;
   item: ListItemRow;
-  setItems: Dispatch<SetStateAction<ListItemRow[]>>;
+  pending: boolean;
+  onConfirm: (item: ListItemRow) => void;
 }) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-  const snapshotRef = useRef<ListItemRow | null>(null);
-  const [state, formAction, pending] = useActionState(
-    deleteListItemAction,
-    initialListItemActionState,
-  );
-
-  useEffect(() => {
-    if (state.status === "success") {
-      toast.success({ title: state.message ?? "Item removido." });
-      closeRef.current?.click();
-      snapshotRef.current = null;
-      return;
-    }
-
-    if (state.status === "error" && snapshotRef.current) {
-      const snapshot = snapshotRef.current;
-      snapshotRef.current = null;
-      setItems((current) => optimisticCreateItem(current, snapshot));
-      if (state.message) {
-        toast.error({ title: state.message });
-      }
-    }
-  }, [setItems, state]);
-
-  function handleSubmit() {
-    snapshotRef.current = item;
-    setItems((current) => optimisticDeleteItem(current, item.id));
-  }
-
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -378,23 +355,21 @@ function DeleteItemDialog({
             “{item.name}” será removido da lista compartilhada. Esta ação não pode ser desfeita.
           </DialogDescription>
         </DialogHeader>
-        <form action={formAction} onSubmit={handleSubmit}>
-          <input type="hidden" name="groupId" value={groupId} />
-          <input type="hidden" name="itemId" value={item.id} />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={pending}>
-                Cancelar
-              </Button>
-            </DialogClose>
-            <DialogClose ref={closeRef} className="sr-only">
-              Fechar
-            </DialogClose>
-            <Button type="submit" variant="destructive" loading={pending}>
-              {pending ? "Removendo…" : "Remover"}
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="outline" disabled={pending}>
+              Cancelar
             </Button>
-          </DialogFooter>
-        </form>
+          </DialogClose>
+          <Button
+            type="button"
+            variant="destructive"
+            loading={pending}
+            onClick={() => onConfirm(item)}
+          >
+            {pending ? "Removendo…" : "Remover"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -409,7 +384,11 @@ function ListItemsPanel({
 }: ListItemsPanelProps) {
   const [items, setItems] = useState(serverItems);
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [, startDeleteTransition] = useTransition();
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const localChangeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const localChangeIdsRef = useRef<Set<string>>(new Set());
   const serverSnapshot = serializeListItemsSnapshot(serverItems);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
 
@@ -423,17 +402,77 @@ function ListItemsPanel({
   }, [serverItems, serverSnapshot]);
 
   useEffect(() => {
-    const timers = highlightTimersRef.current;
+    const highlightTimers = highlightTimersRef.current;
+    const localChangeTimers = localChangeTimersRef.current;
+    const localChangeIds = localChangeIdsRef.current;
     return () => {
-      timers.forEach((timer) => clearTimeout(timer));
-      timers.clear();
+      highlightTimers.forEach((timer) => clearTimeout(timer));
+      highlightTimers.clear();
+      localChangeTimers.forEach((timer) => clearTimeout(timer));
+      localChangeTimers.clear();
+      localChangeIds.clear();
     };
   }, []);
+
+  function trackLocalChange(itemId: string) {
+    localChangeIdsRef.current.add(itemId);
+
+    const existingTimer = localChangeTimersRef.current.get(itemId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Ignore Realtime echo from our own mutation for a short window.
+    const timer = setTimeout(() => {
+      localChangeIdsRef.current.delete(itemId);
+      localChangeTimersRef.current.delete(itemId);
+    }, REMOTE_HIGHLIGHT_MS);
+
+    localChangeTimersRef.current.set(itemId, timer);
+  }
+
+  function confirmDelete(item: ListItemRow) {
+    if (deletingId) {
+      return;
+    }
+
+    const snapshot = item;
+    setDeletingId(item.id);
+    trackLocalChange(item.id);
+    setItems((current) => optimisticDeleteItem(current, item.id));
+
+    startDeleteTransition(async () => {
+      const formData = new FormData();
+      formData.set("groupId", groupId);
+      formData.set("itemId", item.id);
+
+      try {
+        const result = await deleteListItemAction(initialListItemActionState, formData);
+
+        if (result.status === "error") {
+          setItems((current) => optimisticCreateItem(current, snapshot));
+          toast.error({ title: result.message ?? "Não foi possível remover o item." });
+          return;
+        }
+
+        toast.success({ title: result.message ?? "Item removido." });
+      } catch {
+        setItems((current) => optimisticCreateItem(current, snapshot));
+        toast.error({ title: "Não foi possível remover o item. Tente novamente." });
+      } finally {
+        setDeletingId((current) => (current === item.id ? null : current));
+      }
+    });
+  }
 
   useListItemsRealtime({
     listId,
     onChange: setItems,
     onRemoteChange: (itemId) => {
+      if (localChangeIdsRef.current.has(itemId)) {
+        return;
+      }
+
       setHighlightedIds((current) => {
         const next = new Set(current);
         next.add(itemId);
@@ -465,6 +504,7 @@ function ListItemsPanel({
         listId={listId}
         currentUserId={currentUserId}
         setItems={setItems}
+        trackLocalChange={trackLocalChange}
       />
 
       <section className="grid gap-3" aria-labelledby="items-heading">
@@ -505,8 +545,17 @@ function ListItemsPanel({
                     ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <EditItemDialog groupId={groupId} item={item} setItems={setItems} />
-                    <DeleteItemDialog groupId={groupId} item={item} setItems={setItems} />
+                    <EditItemDialog
+                      groupId={groupId}
+                      item={item}
+                      setItems={setItems}
+                      trackLocalChange={trackLocalChange}
+                    />
+                    <DeleteItemDialog
+                      item={item}
+                      pending={deletingId === item.id}
+                      onConfirm={confirmDelete}
+                    />
                   </div>
                 </li>
               );
