@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
+import { ListItemsPanel } from "@/components/lists/list-items-panel";
 import { Button } from "@/components/ui/button";
 import {
   buildCreateGroupPath,
   buildGroupMembersPath,
   getCurrentGroupMembership,
 } from "@/lib/groups/membership";
+import { listActiveListItems } from "@/lib/lists/items";
 import { createClient } from "@/lib/supabase/server";
 
 type GroupListPageProps = {
@@ -69,6 +70,8 @@ export default async function GroupListPage({ params }: GroupListPageProps) {
     notFound();
   }
 
+  const items = await listActiveListItems(supabase, list.id);
+
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
       <header className="space-y-3">
@@ -76,7 +79,7 @@ export default async function GroupListPage({ params }: GroupListPageProps) {
         <div className="space-y-2">
           <h1 className="text-display text-foreground">{membership.groupName}</h1>
           <p className="text-body text-muted-foreground">
-            Seu grupo está pronto. Em breve você poderá adicionar itens por aqui.
+            Adicione, edite e remova itens com o restante do grupo.
           </p>
         </div>
         <Button asChild variant="outline" size="sm" className="w-fit">
@@ -84,15 +87,7 @@ export default async function GroupListPage({ params }: GroupListPageProps) {
         </Button>
       </header>
 
-      <EmptyState
-        title="Lista vazia"
-        description="Quando alguém adicionar o primeiro item, ele aparecerá nesta lista compartilhada."
-        action={
-          <Button asChild variant="outline">
-            <Link href="/profile">Ir para o perfil</Link>
-          </Button>
-        }
-      />
+      <ListItemsPanel groupId={groupId} items={items} />
     </main>
   );
 }

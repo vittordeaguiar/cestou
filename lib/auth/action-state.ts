@@ -45,3 +45,14 @@ export type MemberActionState = {
 export const initialMemberActionState: MemberActionState = {
   status: "idle",
 };
+
+export type ListItemActionState = {
+  status: "idle" | "error" | "success";
+  fieldErrors: FieldErrors<"name" | "quantity" | "unit">;
+  message?: string;
+};
+
+export const initialListItemActionState: ListItemActionState = {
+  status: "idle",
+  fieldErrors: {},
+};
