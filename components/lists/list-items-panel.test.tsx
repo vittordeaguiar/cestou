@@ -8,12 +8,14 @@ const {
   createListItemAction,
   deleteListItemAction,
   updateListItemAction,
+  setListItemPurchasedAction,
   toastSuccess,
   toastError,
 } = vi.hoisted(() => ({
   createListItemAction: vi.fn(),
   deleteListItemAction: vi.fn(),
   updateListItemAction: vi.fn(),
+  setListItemPurchasedAction: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -22,6 +24,7 @@ vi.mock("@/app/app/groups/list-items-actions", () => ({
   createListItemAction,
   deleteListItemAction,
   updateListItemAction,
+  setListItemPurchasedAction,
 }));
 vi.mock("@/lib/lists/use-list-items-realtime", () => ({
   useListItemsRealtime: vi.fn(),
@@ -40,6 +43,17 @@ const baseProps = {
   memberNamesByUserId: { "user-1": "Ana" } as Record<string, string | null>,
 };
 
+const arroz = {
+  id: "11111111-1111-4111-8111-111111111111",
+  listId: "list-1",
+  name: "Arroz",
+  quantity: 2,
+  unit: "kg",
+  purchased: false,
+  createdBy: "user-1",
+  createdAt: "2026-08-08T12:00:00.000Z",
+};
+
 describe("ListItemsPanel", () => {
   afterEach(cleanup);
 
@@ -47,6 +61,7 @@ describe("ListItemsPanel", () => {
     createListItemAction.mockReset();
     deleteListItemAction.mockReset();
     updateListItemAction.mockReset();
+    setListItemPurchasedAction.mockReset();
     toastSuccess.mockReset();
     toastError.mockReset();
     vi.stubGlobal(
@@ -98,22 +113,7 @@ describe("ListItemsPanel", () => {
 
   it("opens edit and delete dialogs for existing items", async () => {
     const user = userEvent.setup();
-    render(
-      <ListItemsPanel
-        {...baseProps}
-        items={[
-          {
-            id: "11111111-1111-4111-8111-111111111111",
-            listId: "list-1",
-            name: "Arroz",
-            quantity: 2,
-            unit: "kg",
-            createdBy: "user-1",
-            createdAt: "2026-08-08T12:00:00.000Z",
-          },
-        ]}
-      />,
-    );
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
 
     expect(screen.getByText("2 kg")).not.toBeNull();
     expect(screen.getByText("Adicionado por Ana")).not.toBeNull();
@@ -128,6 +128,61 @@ describe("ListItemsPanel", () => {
     expect(deleteListItemAction).not.toHaveBeenCalled();
   });
 
+  it("shows purchased items in the Comprados section on load", () => {
+    render(
+      <ListItemsPanel
+        {...baseProps}
+        items={[{ ...arroz, purchased: true }]}
+      />,
+    );
+
+    expect(screen.getByText("Nada pendente")).not.toBeNull();
+    expect(screen.getByText("Comprados (1)")).not.toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Marcar Arroz como pendente" })).not.toBeNull();
+  });
+
+  it("moves an item into Comprados when marked as purchased", async () => {
+    const user = userEvent.setup();
+    setListItemPurchasedAction.mockImplementation(async () => ({
+      status: "success",
+      fieldErrors: {},
+      message: "Item marcado como comprado.",
+    }));
+
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Marcar Arroz como comprado" }));
+
+    expect(screen.getByText("Comprados (1)")).not.toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Marcar Arroz como pendente" })).not.toBeNull();
+
+    await waitFor(() => {
+      expect(setListItemPurchasedAction).toHaveBeenCalled();
+    });
+  });
+
+  it("rolls back purchased toggle when the action fails", async () => {
+    const user = userEvent.setup();
+    setListItemPurchasedAction.mockImplementation(async () => ({
+      status: "error",
+      fieldErrors: {},
+      message: "Não foi possível atualizar o item. Tente novamente.",
+    }));
+
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
+
+    await user.click(screen.getByRole("checkbox", { name: "Marcar Arroz como comprado" }));
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith({
+        title: "Não foi possível atualizar o item. Tente novamente.",
+      });
+    });
+
+    expect(screen.queryByText("Comprados (1)")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Marcar Arroz como comprado" })).not.toBeNull();
+  });
+
   it("keeps delete reconciliation in the parent after optimistic removal", async () => {
     const user = userEvent.setup();
     deleteListItemAction.mockImplementation(async () => ({
@@ -136,22 +191,7 @@ describe("ListItemsPanel", () => {
       message: "Não foi possível remover o item. Tente novamente.",
     }));
 
-    render(
-      <ListItemsPanel
-        {...baseProps}
-        items={[
-          {
-            id: "11111111-1111-4111-8111-111111111111",
-            listId: "list-1",
-            name: "Arroz",
-            quantity: 2,
-            unit: "kg",
-            createdBy: "user-1",
-            createdAt: "2026-08-08T12:00:00.000Z",
-          },
-        ]}
-      />,
-    );
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
 
     await user.click(screen.getByRole("button", { name: "Remover" }));
     const confirmDelete = screen

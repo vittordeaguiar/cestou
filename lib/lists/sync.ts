@@ -31,6 +31,18 @@ function readQuantity(value: unknown): number | null {
   return null;
 }
 
+function readPurchased(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value === "true" || value === "t" || value === 1 || value === "1") {
+    return true;
+  }
+
+  return false;
+}
+
 /** Maps a postgres_changes row payload into the client list item shape. */
 export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItemRow | null {
   const id = readString(row.id);
@@ -48,6 +60,7 @@ export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItem
     name,
     quantity,
     unit: readString(row.unit),
+    purchased: readPurchased(row.purchased),
     createdBy: readString(row.created_by),
     createdAt: readString(row.created_at) ?? new Date().toISOString(),
   };
@@ -103,7 +116,8 @@ export function mergeServerListItems(
   serverItems: ListItemRow[],
   localChangeIds: ReadonlySet<string>,
 ): ListItemRow[] {
-  const currentIds = new Set(current.map((item) => item.id));
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  const currentIds = new Set(currentById.keys());
   const filteredServer = serverItems.filter((item) => {
     // Keep optimistic deletes hidden until the server action settles.
     if (localChangeIds.has(item.id) && !currentIds.has(item.id)) {
@@ -111,9 +125,16 @@ export function mergeServerListItems(
     }
     return true;
   });
-  const serverIds = new Set(filteredServer.map((item) => item.id));
+  // Prefer local rows for in-flight toggles/edits so catch-up does not clobber them.
+  const mergedServer = filteredServer.map((item) => {
+    if (!localChangeIds.has(item.id)) {
+      return item;
+    }
+    return currentById.get(item.id) ?? item;
+  });
+  const serverIds = new Set(mergedServer.map((item) => item.id));
   const inFlightCreates = current.filter((item) => !serverIds.has(item.id));
-  return sortListItemsByCreatedAt([...filteredServer, ...inFlightCreates]);
+  return sortListItemsByCreatedAt([...mergedServer, ...inFlightCreates]);
 }
 
 export function optimisticUpdateItem(
@@ -122,6 +143,14 @@ export function optimisticUpdateItem(
   patch: Pick<ListItemRow, "name" | "quantity" | "unit">,
 ): ListItemRow[] {
   return items.map((item) => (item.id === itemId ? { ...item, ...patch } : item));
+}
+
+export function optimisticSetPurchased(
+  items: ListItemRow[],
+  itemId: string,
+  purchased: boolean,
+): ListItemRow[] {
+  return items.map((item) => (item.id === itemId ? { ...item, purchased } : item));
 }
 
 export function optimisticDeleteItem(items: ListItemRow[], itemId: string): ListItemRow[] {
@@ -133,7 +162,7 @@ export function serializeListItemsSnapshot(items: ListItemRow[]): string {
   return items
     .map(
       (item) =>
-        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.createdBy ?? ""}:${item.createdAt}`,
+        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.purchased ? "1" : "0"}:${item.createdBy ?? ""}:${item.createdAt}`,
     )
     .join("|");
 }

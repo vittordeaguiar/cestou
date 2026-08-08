@@ -8,6 +8,7 @@ export type ListItemRow = {
   name: string;
   quantity: number;
   unit: string | null;
+  purchased: boolean;
   createdBy: string | null;
   createdAt: string;
 };
@@ -18,6 +19,7 @@ type ListItemRecord = {
   name: string;
   quantity: number | string;
   unit: string | null;
+  purchased: boolean;
   created_by: string | null;
   created_at: string;
 };
@@ -29,6 +31,7 @@ export function mapListItemRecord(item: ListItemRecord): ListItemRow {
     name: item.name,
     quantity: Number(item.quantity),
     unit: item.unit,
+    purchased: Boolean(item.purchased),
     createdBy: item.created_by,
     createdAt: item.created_at,
   };
@@ -41,13 +44,34 @@ export function sortListItemsByCreatedAt(items: ListItemRow[]): ListItemRow[] {
   });
 }
 
+export function partitionListItems(items: ListItemRow[]): {
+  pending: ListItemRow[];
+  purchased: ListItemRow[];
+} {
+  const pending: ListItemRow[] = [];
+  const purchased: ListItemRow[] = [];
+
+  for (const item of items) {
+    if (item.purchased) {
+      purchased.push(item);
+    } else {
+      pending.push(item);
+    }
+  }
+
+  return {
+    pending: sortListItemsByCreatedAt(pending),
+    purchased: sortListItemsByCreatedAt(purchased),
+  };
+}
+
 export async function listActiveListItems(
   supabase: SupabaseClient<Database>,
   listId: string,
 ): Promise<ListItemRow[]> {
   const { data, error } = await supabase
     .from("list_items")
-    .select("id, list_id, name, quantity, unit, created_by, created_at")
+    .select("id, list_id, name, quantity, unit, purchased, created_by, created_at")
     .eq("list_id", listId)
     .order("created_at", { ascending: true });
 
