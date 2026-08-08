@@ -1,8 +1,6 @@
--- Reconcile duplicate memberships that were valid before the v1 one-group rule.
--- Prefer keeping an owner row when present; otherwise keep the oldest membership.
--- Full idempotent reconcile + name-length hardening also live in
--- 20260808150000_reconcile_one_group_and_name_limit.sql for already-applied remotes.
-create temporary table _cestou_v45_duplicate_memberships on commit drop as
+-- Reconcile any pre-v1 multi-group memberships before enforcing one group per user.
+-- Preference per user: keep an owner membership when present, otherwise the oldest row.
+create temporary table _cestou_duplicate_memberships on commit drop as
 select
   id,
   group_id,
@@ -17,16 +15,18 @@ select
   ) as keep_rank
 from public.group_members;
 
-create temporary table _cestou_v45_memberships_to_drop on commit drop as
+create temporary table _cestou_memberships_to_drop on commit drop as
 select id, group_id, role
-from _cestou_v45_duplicate_memberships
+from _cestou_duplicate_memberships
 where keep_rank > 1;
 
-create temporary table _cestou_v45_groups_losing_owner on commit drop as
+-- Groups that would lose their owner because that ownership is a discarded duplicate.
+create temporary table _cestou_groups_losing_owner on commit drop as
 select distinct group_id
-from _cestou_v45_memberships_to_drop
+from _cestou_memberships_to_drop
 where role = 'owner';
 
+-- Promote the oldest remaining member so those groups keep exactly one owner.
 with candidates as (
   select
     gm.id as membership_id,
@@ -36,11 +36,11 @@ with candidates as (
       order by gm.created_at asc, gm.id asc
     ) as member_rank
   from public.group_members as gm
-  join _cestou_v45_groups_losing_owner as losing
+  join _cestou_groups_losing_owner as losing
     on losing.group_id = gm.group_id
   where not exists (
     select 1
-    from _cestou_v45_memberships_to_drop as dropping
+    from _cestou_memberships_to_drop as dropping
     where dropping.id = gm.id
   )
 )
@@ -52,9 +52,10 @@ where gm.id = c.membership_id
   and gm.role is distinct from 'owner';
 
 delete from public.group_members as gm
-using _cestou_v45_memberships_to_drop as dropping
+using _cestou_memberships_to_drop as dropping
 where gm.id = dropping.id;
 
+-- Remove groups left without members after reconciliation.
 delete from public.groups as g
 where not exists (
   select 1
@@ -62,7 +63,30 @@ where not exists (
   where gm.group_id = g.id
 );
 
--- v1 product rule: a user may belong to at most one group.
+-- Truncate oversized names before the length constraint (legacy rows only).
+update public.groups
+set name = left(btrim(name), 80)
+where char_length(btrim(name)) > 80;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'groups_name_max_length'
+      and conrelid = 'public.groups'::regclass
+  ) then
+    alter table public.groups
+      add constraint groups_name_max_length
+      check (char_length(name) <= 80);
+  end if;
+end;
+$$;
+
+comment on constraint groups_name_max_length on public.groups is
+  'Matches the application/RPC max length for group names (80).';
+
+-- Safe if 20260808140000 already created the index, or if it failed before doing so.
 create unique index if not exists group_members_one_group_per_user
   on public.group_members (user_id);
 
@@ -114,59 +138,5 @@ $$;
 comment on function public.create_group(text) is
   'Creates a group, makes the caller the owner, and relies on groups_create_initial_list for the shared list. Enforces trimmed non-empty names (<= 80 chars) and one group membership per user in v1.';
 
-create or replace function public.accept_group_invite(target_invite_id uuid)
-returns uuid
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  current_user_id uuid := auth.uid();
-  current_email text := lower(btrim(coalesce(auth.jwt() ->> 'email', '')));
-  invitation public.group_invites;
-begin
-  if current_user_id is null or current_email = '' then
-    raise exception 'Authentication with an email claim is required' using errcode = '42501';
-  end if;
-
-  if exists (
-    select 1
-    from public.group_members
-    where user_id = current_user_id
-  ) then
-    raise exception 'User already belongs to a group' using errcode = 'P0001';
-  end if;
-
-  select *
-  into invitation
-  from public.group_invites
-  where id = target_invite_id
-  for update;
-
-  if not found
-    or invitation.status <> 'pending'
-    or invitation.expires_at <= now()
-    or lower(btrim(invitation.email)) <> current_email
-  then
-    raise exception 'Invitation is not available for this user' using errcode = '42501';
-  end if;
-
-  insert into public.group_members (group_id, user_id, role)
-  values (invitation.group_id, current_user_id, 'member')
-  on conflict (group_id, user_id) do nothing;
-
-  update public.group_invites
-  set status = 'accepted', accepted_at = now()
-  where id = invitation.id;
-
-  return invitation.group_id;
-end;
-$$;
-
-comment on function public.accept_group_invite(uuid) is
-  'Accepts a pending invitation for the authenticated email. Rejects users who already belong to a group in v1.';
-
 revoke all on function public.create_group(text) from public;
-revoke all on function public.accept_group_invite(uuid) from public;
 grant execute on function public.create_group(text) to authenticated;
-grant execute on function public.accept_group_invite(uuid) to authenticated;

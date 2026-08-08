@@ -35,6 +35,8 @@ npm run dev
 - Após criar, o app redireciona para `/app/groups/[groupId]/list`.
 - Regra v1: cada usuário participa de no máximo um grupo (índice único + checagem na RPC). `/app` envia quem já tem grupo para a lista e quem não tem para a criação.
 - Em `/app/groups/[groupId]/members`: listar membros; owner remove membros comuns; membro comum pode sair; owner vê convites pendentes (somente leitura nesta etapa).
+- Antes do índice único, as migrations reconciliam memberships duplicadas (preferem `owner`, senão a mais antiga; promovem owner se um grupo ficaria órfão; removem grupos vazios).
+- Nome do grupo: máximo 80 caracteres na UI, na RPC `create_group` e na constraint `groups_name_max_length`.
 
 ## Scripts
 
