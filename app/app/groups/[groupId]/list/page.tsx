@@ -8,6 +8,7 @@ import {
   buildCreateGroupPath,
   buildGroupMembersPath,
   getCurrentGroupMembership,
+  listGroupMembers,
 } from "@/lib/groups/membership";
 import { listActiveListItems } from "@/lib/lists/items";
 import { createClient } from "@/lib/supabase/server";
@@ -70,7 +71,14 @@ export default async function GroupListPage({ params }: GroupListPageProps) {
     notFound();
   }
 
-  const items = await listActiveListItems(supabase, list.id);
+  const [items, members] = await Promise.all([
+    listActiveListItems(supabase, list.id),
+    listGroupMembers(supabase, groupId),
+  ]);
+
+  const memberNamesByUserId = Object.fromEntries(
+    members.map((member) => [member.userId, member.displayName]),
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-8 px-4 py-10 sm:px-6">
@@ -87,7 +95,13 @@ export default async function GroupListPage({ params }: GroupListPageProps) {
         </Button>
       </header>
 
-      <ListItemsPanel groupId={groupId} items={items} />
+      <ListItemsPanel
+        groupId={groupId}
+        listId={list.id}
+        currentUserId={userId}
+        memberNamesByUserId={memberNamesByUserId}
+        items={items}
+      />
     </main>
   );
 }

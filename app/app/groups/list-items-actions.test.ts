@@ -128,17 +128,36 @@ describe("list item actions", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
+  it("rejects create without a valid client item id", async () => {
+    await expect(
+      createListItemAction(
+        initialListItemActionState,
+        formData({ groupId: "g1", name: "Arroz", quantity: "1", unit: "", itemId: "bad" }),
+      ),
+    ).resolves.toMatchObject({ status: "error", message: "Item inválido." });
+
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
   it("creates an item on the caller active list", async () => {
     const { insert } = mockAuthedClient({});
+    const itemId = "11111111-1111-4111-8111-111111111111";
 
     await expect(
       createListItemAction(
         initialListItemActionState,
-        formData({ groupId: "g1", name: " Arroz ", quantity: "2,5", unit: " kg " }),
+        formData({
+          groupId: "g1",
+          itemId,
+          name: " Arroz ",
+          quantity: "2,5",
+          unit: " kg ",
+        }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item adicionado." });
 
     expect(insert).toHaveBeenCalledWith({
+      id: itemId,
       list_id: "list-1",
       name: "Arroz",
       quantity: 2.5,
