@@ -23,3 +23,15 @@ export const initialProfileActionState: ProfileActionState = {
   status: "idle",
   fieldErrors: {},
 };
+
+export type GroupActionState = {
+  status: "idle" | "error" | "success";
+  fieldErrors: FieldErrors<"name">;
+  message?: string;
+  redirectTo?: string;
+};
+
+export const initialGroupActionState: GroupActionState = {
+  status: "idle",
+  fieldErrors: {},
+};

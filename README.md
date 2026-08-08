@@ -28,6 +28,13 @@ npm run dev
 - Não configure nem exponha `SUPABASE_SERVICE_ROLE_KEY` no browser. Os fluxos de autenticação e perfil não usam essa chave.
 - Confirmação de e-mail, recuperação de senha, OAuth, magic link, OTP, alteração de e-mail/senha, avatar e exclusão de conta não fazem parte desta versão.
 
+## Grupos (V-45)
+
+- Usuário autenticado cria um grupo em `/app/groups/new` (nome obrigatório).
+- A RPC `create_group` torna o criador `owner` e o trigger do banco cria a lista ativa compartilhada.
+- Após criar, o app redireciona para `/app/groups/[groupId]/list`.
+- Regra v1: cada usuário participa de no máximo um grupo (índice único + checagem na RPC). `/app` envia quem já tem grupo para a lista e quem não tem para a criação.
+
 ## Scripts
 
 | Comando          | Descrição                   |
