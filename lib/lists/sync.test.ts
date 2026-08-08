@@ -156,4 +156,13 @@ describe("list item sync helpers", () => {
 
     expect(merged.map((item) => item.id)).toEqual([serverOnly.id, pendingCreate.id]);
   });
+
+  it("keeps in-flight purchased toggles when catching up from the server", () => {
+    const localToggle: ListItemRow = { ...baseItem, purchased: true };
+    const staleServer: ListItemRow = { ...baseItem, purchased: false };
+
+    const merged = mergeServerListItems([localToggle], [staleServer], new Set([baseItem.id]));
+
+    expect(merged).toEqual([localToggle]);
+  });
 });

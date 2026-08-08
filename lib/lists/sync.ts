@@ -116,7 +116,8 @@ export function mergeServerListItems(
   serverItems: ListItemRow[],
   localChangeIds: ReadonlySet<string>,
 ): ListItemRow[] {
-  const currentIds = new Set(current.map((item) => item.id));
+  const currentById = new Map(current.map((item) => [item.id, item]));
+  const currentIds = new Set(currentById.keys());
   const filteredServer = serverItems.filter((item) => {
     // Keep optimistic deletes hidden until the server action settles.
     if (localChangeIds.has(item.id) && !currentIds.has(item.id)) {
@@ -124,9 +125,16 @@ export function mergeServerListItems(
     }
     return true;
   });
-  const serverIds = new Set(filteredServer.map((item) => item.id));
+  // Prefer local rows for in-flight toggles/edits so catch-up does not clobber them.
+  const mergedServer = filteredServer.map((item) => {
+    if (!localChangeIds.has(item.id)) {
+      return item;
+    }
+    return currentById.get(item.id) ?? item;
+  });
+  const serverIds = new Set(mergedServer.map((item) => item.id));
   const inFlightCreates = current.filter((item) => !serverIds.has(item.id));
-  return sortListItemsByCreatedAt([...filteredServer, ...inFlightCreates]);
+  return sortListItemsByCreatedAt([...mergedServer, ...inFlightCreates]);
 }
 
 export function optimisticUpdateItem(

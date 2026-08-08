@@ -128,6 +128,19 @@ describe("ListItemsPanel", () => {
     expect(deleteListItemAction).not.toHaveBeenCalled();
   });
 
+  it("shows purchased items in the Comprados section on load", () => {
+    render(
+      <ListItemsPanel
+        {...baseProps}
+        items={[{ ...arroz, purchased: true }]}
+      />,
+    );
+
+    expect(screen.getByText("Nada pendente")).not.toBeNull();
+    expect(screen.getByText("Comprados (1)")).not.toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Marcar Arroz como pendente" })).not.toBeNull();
+  });
+
   it("moves an item into Comprados when marked as purchased", async () => {
     const user = userEvent.setup();
     setListItemPurchasedAction.mockImplementation(async () => ({

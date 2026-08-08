@@ -439,7 +439,8 @@ function ListItemsPanel({
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
   const [deleteTarget, setDeleteTarget] = useState<ListItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingIds, setTogglingIds] = useState<Set<string>>(() => new Set());
+  const [purchasedOpen, setPurchasedOpen] = useState(true);
   const [, startDeleteTransition] = useTransition();
   const [, startPurchaseTransition] = useTransition();
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -498,12 +499,16 @@ function ListItemsPanel({
   }
 
   function togglePurchased(item: ListItemRow, nextPurchased: boolean) {
-    if (togglingId || item.purchased === nextPurchased) {
+    if (togglingIds.has(item.id) || item.purchased === nextPurchased) {
       return;
     }
 
     const previousPurchased = item.purchased;
-    setTogglingId(item.id);
+    setTogglingIds((current) => {
+      const next = new Set(current);
+      next.add(item.id);
+      return next;
+    });
     trackLocalChange(item.id);
     setItems((current) => optimisticSetPurchased(current, item.id, nextPurchased));
 
@@ -524,7 +529,11 @@ function ListItemsPanel({
         setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
         toast.error({ title: "Não foi possível atualizar o item. Tente novamente." });
       } finally {
-        setTogglingId((current) => (current === item.id ? null : current));
+        setTogglingIds((current) => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
       }
     });
   }
@@ -635,7 +644,7 @@ function ListItemsPanel({
                 item={item}
                 memberNamesByUserId={memberNamesByUserId}
                 highlighted={highlightedIds.has(item.id)}
-                toggling={togglingId === item.id}
+                toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
                 onDelete={setDeleteTarget}
@@ -649,8 +658,12 @@ function ListItemsPanel({
       </section>
 
       {purchased.length > 0 ? (
-        <details open className="grid gap-3">
-          <summary className="text-h3 text-foreground cursor-pointer list-outside">
+        <details
+          open={purchasedOpen}
+          className="grid gap-3"
+          onToggle={(event) => setPurchasedOpen(event.currentTarget.open)}
+        >
+          <summary className="text-h3 text-foreground cursor-pointer">
             Comprados ({purchased.length})
           </summary>
           <ul className="divide-border border-border divide-y rounded-2xl border">
@@ -660,7 +673,7 @@ function ListItemsPanel({
                 item={item}
                 memberNamesByUserId={memberNamesByUserId}
                 highlighted={highlightedIds.has(item.id)}
-                toggling={togglingId === item.id}
+                toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
                 onDelete={setDeleteTarget}
