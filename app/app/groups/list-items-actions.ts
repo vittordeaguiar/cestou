@@ -202,3 +202,56 @@ export async function deleteListItemAction(
     return actionError("Não foi possível remover o item. Tente novamente.");
   }
 }
+
+function readPurchasedField(formData: FormData): boolean | null {
+  const value = readStringField(formData, "purchased");
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  return null;
+}
+
+export async function setListItemPurchasedAction(
+  _previousState: ListItemActionState,
+  formData: FormData,
+): Promise<ListItemActionState> {
+  const groupId = readStringField(formData, "groupId");
+  const itemId = readStringField(formData, "itemId");
+  const purchased = readPurchasedField(formData);
+
+  if (!isUuid(itemId) || purchased === null) {
+    return actionError("Item inválido.");
+  }
+
+  try {
+    const auth = await requireGroupMembership(groupId);
+    if (!auth.ok) {
+      return auth.error;
+    }
+
+    const { data, error } = await auth.supabase
+      .from("list_items")
+      .update({ purchased })
+      .eq("id", itemId)
+      .eq("list_id", auth.membership.listId)
+      .select("id")
+      .maybeSingle();
+
+    if (error || !data) {
+      return actionError("Não foi possível atualizar o item. Tente novamente.");
+    }
+
+    revalidatePath(buildGroupListPath(groupId));
+
+    return {
+      status: "success",
+      fieldErrors: {},
+      message: purchased ? "Item marcado como comprado." : "Item marcado como pendente.",
+    };
+  } catch {
+    return actionError("Não foi possível atualizar o item. Tente novamente.");
+  }
+}

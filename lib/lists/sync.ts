@@ -31,6 +31,18 @@ function readQuantity(value: unknown): number | null {
   return null;
 }
 
+function readPurchased(value: unknown): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value === "true" || value === "t" || value === 1 || value === "1") {
+    return true;
+  }
+
+  return false;
+}
+
 /** Maps a postgres_changes row payload into the client list item shape. */
 export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItemRow | null {
   const id = readString(row.id);
@@ -48,6 +60,7 @@ export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItem
     name,
     quantity,
     unit: readString(row.unit),
+    purchased: readPurchased(row.purchased),
     createdBy: readString(row.created_by),
     createdAt: readString(row.created_at) ?? new Date().toISOString(),
   };
@@ -124,6 +137,14 @@ export function optimisticUpdateItem(
   return items.map((item) => (item.id === itemId ? { ...item, ...patch } : item));
 }
 
+export function optimisticSetPurchased(
+  items: ListItemRow[],
+  itemId: string,
+  purchased: boolean,
+): ListItemRow[] {
+  return items.map((item) => (item.id === itemId ? { ...item, purchased } : item));
+}
+
 export function optimisticDeleteItem(items: ListItemRow[], itemId: string): ListItemRow[] {
   return removeItem(items, itemId);
 }
@@ -133,7 +154,7 @@ export function serializeListItemsSnapshot(items: ListItemRow[]): string {
   return items
     .map(
       (item) =>
-        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.createdBy ?? ""}:${item.createdAt}`,
+        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.purchased ? "1" : "0"}:${item.createdBy ?? ""}:${item.createdAt}`,
     )
     .join("|");
 }

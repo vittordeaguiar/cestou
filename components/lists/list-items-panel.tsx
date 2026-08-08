@@ -15,10 +15,12 @@ import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import {
   createListItemAction,
   deleteListItemAction,
+  setListItemPurchasedAction,
   updateListItemAction,
 } from "@/app/app/groups/list-items-actions";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -31,12 +33,17 @@ import {
 } from "@/components/ui/dialog";
 import { FieldInput } from "@/components/ui/field-input";
 import { initialListItemActionState } from "@/lib/auth/action-state";
-import { formatItemQuantity, type ListItemRow } from "@/lib/lists/items";
+import {
+  formatItemQuantity,
+  partitionListItems,
+  type ListItemRow,
+} from "@/lib/lists/items";
 import {
   formatAddedByLabel,
   mergeServerListItems,
   optimisticCreateItem,
   optimisticDeleteItem,
+  optimisticSetPurchased,
   optimisticUpdateItem,
   serializeListItemsSnapshot,
 } from "@/lib/lists/sync";
@@ -179,6 +186,7 @@ function AddItemForm({
         name: validated.name,
         quantity: validated.quantity,
         unit: validated.unit,
+        purchased: false,
         createdBy: currentUserId,
         createdAt: new Date().toISOString(),
       }),
@@ -335,6 +343,91 @@ function EditItemDialog({
   );
 }
 
+function ListItemRowView({
+  item,
+  memberNamesByUserId,
+  highlighted,
+  toggling,
+  deleting,
+  onTogglePurchased,
+  onDelete,
+  groupId,
+  setItems,
+  trackLocalChange,
+}: {
+  item: ListItemRow;
+  memberNamesByUserId: Record<string, string | null>;
+  highlighted: boolean;
+  toggling: boolean;
+  deleting: boolean;
+  onTogglePurchased: (item: ListItemRow, purchased: boolean) => void;
+  onDelete: (item: ListItemRow) => void;
+  groupId: string;
+  setItems: Dispatch<SetStateAction<ListItemRow[]>>;
+  trackLocalChange: (itemId: string) => void;
+}) {
+  const addedBy = formatAddedByLabel(item.createdBy, memberNamesByUserId);
+  const checkboxLabel = item.purchased
+    ? `Marcar ${item.name} como pendente`
+    : `Marcar ${item.name} como comprado`;
+
+  return (
+    <li
+      className={cn(
+        "flex flex-col gap-3 px-4 py-4 transition-colors duration-500 sm:flex-row sm:items-center sm:justify-between",
+        highlighted ? "bg-accent/70" : "bg-transparent",
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <Checkbox
+          checked={item.purchased}
+          disabled={toggling}
+          aria-label={checkboxLabel}
+          className="mt-0.5"
+          onCheckedChange={(value) => {
+            if (value === "indeterminate") {
+              return;
+            }
+            onTogglePurchased(item, value);
+          }}
+        />
+        <div className="min-w-0 space-y-1">
+          <p
+            className={cn(
+              "text-body truncate font-medium",
+              item.purchased ? "text-muted-foreground line-through" : "text-foreground",
+            )}
+          >
+            {item.name}
+          </p>
+          <p className="text-small text-muted-foreground">
+            {formatItemQuantity(item.quantity, item.unit)}
+          </p>
+          {addedBy ? <p className="text-caption text-muted-foreground">{addedBy}</p> : null}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 pl-8 sm:pl-0">
+        <EditItemDialog
+          groupId={groupId}
+          item={item}
+          setItems={setItems}
+          trackLocalChange={trackLocalChange}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={deleting}
+          onClick={() => onDelete(item)}
+        >
+          <Trash2Icon data-icon="inline-start" />
+          Remover
+        </Button>
+      </div>
+    </li>
+  );
+}
+
 function ListItemsPanel({
   groupId,
   listId,
@@ -346,12 +439,15 @@ function ListItemsPanel({
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
   const [deleteTarget, setDeleteTarget] = useState<ListItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
+  const [, startPurchaseTransition] = useTransition();
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const localChangeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const localChangeIdsRef = useRef<Set<string>>(new Set());
   const serverSnapshot = serializeListItemsSnapshot(serverItems);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
+  const { pending, purchased } = partitionListItems(items);
 
   useEffect(() => {
     if (serverSnapshot === lastSyncedSnapshotRef.current) {
@@ -399,6 +495,38 @@ function ListItemsPanel({
     }
 
     setItems((current) => mergeServerListItems(current, snapshot, localChangeIdsRef.current));
+  }
+
+  function togglePurchased(item: ListItemRow, nextPurchased: boolean) {
+    if (togglingId || item.purchased === nextPurchased) {
+      return;
+    }
+
+    const previousPurchased = item.purchased;
+    setTogglingId(item.id);
+    trackLocalChange(item.id);
+    setItems((current) => optimisticSetPurchased(current, item.id, nextPurchased));
+
+    startPurchaseTransition(async () => {
+      const formData = new FormData();
+      formData.set("groupId", groupId);
+      formData.set("itemId", item.id);
+      formData.set("purchased", String(nextPurchased));
+
+      try {
+        const result = await setListItemPurchasedAction(initialListItemActionState, formData);
+
+        if (result.status === "error") {
+          setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
+          toast.error({ title: result.message ?? "Não foi possível atualizar o item." });
+        }
+      } catch {
+        setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
+        toast.error({ title: "Não foi possível atualizar o item. Tente novamente." });
+      } finally {
+        setTogglingId((current) => (current === item.id ? null : current));
+      }
+    });
   }
 
   function confirmDelete() {
@@ -485,7 +613,7 @@ function ListItemsPanel({
             Itens
           </h2>
           <p className="text-small text-muted-foreground">
-            Todos os membros do grupo podem adicionar, editar e remover.
+            Marque o que já foi comprado; o restante do grupo vê na hora.
           </p>
         </div>
 
@@ -494,52 +622,56 @@ function ListItemsPanel({
             title="Lista vazia"
             description="Adicione o primeiro item para começar a organizar as compras."
           />
+        ) : pending.length === 0 ? (
+          <EmptyState
+            title="Nada pendente"
+            description="Todos os itens foram marcados como comprados."
+          />
         ) : (
           <ul className="divide-border border-border divide-y rounded-2xl border">
-            {items.map((item) => {
-              const addedBy = formatAddedByLabel(item.createdBy, memberNamesByUserId);
-
-              return (
-                <li
-                  key={item.id}
-                  className={cn(
-                    "flex flex-col gap-3 px-4 py-4 transition-colors duration-500 sm:flex-row sm:items-center sm:justify-between",
-                    highlightedIds.has(item.id) ? "bg-accent/70" : "bg-transparent",
-                  )}
-                >
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-body text-foreground truncate font-medium">{item.name}</p>
-                    <p className="text-small text-muted-foreground">
-                      {formatItemQuantity(item.quantity, item.unit)}
-                    </p>
-                    {addedBy ? (
-                      <p className="text-caption text-muted-foreground">{addedBy}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <EditItemDialog
-                      groupId={groupId}
-                      item={item}
-                      setItems={setItems}
-                      trackLocalChange={trackLocalChange}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={deletingId === item.id}
-                      onClick={() => setDeleteTarget(item)}
-                    >
-                      <Trash2Icon data-icon="inline-start" />
-                      Remover
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
+            {pending.map((item) => (
+              <ListItemRowView
+                key={item.id}
+                item={item}
+                memberNamesByUserId={memberNamesByUserId}
+                highlighted={highlightedIds.has(item.id)}
+                toggling={togglingId === item.id}
+                deleting={deletingId === item.id}
+                onTogglePurchased={togglePurchased}
+                onDelete={setDeleteTarget}
+                groupId={groupId}
+                setItems={setItems}
+                trackLocalChange={trackLocalChange}
+              />
+            ))}
           </ul>
         )}
       </section>
+
+      {purchased.length > 0 ? (
+        <details open className="grid gap-3">
+          <summary className="text-h3 text-foreground cursor-pointer list-outside">
+            Comprados ({purchased.length})
+          </summary>
+          <ul className="divide-border border-border divide-y rounded-2xl border">
+            {purchased.map((item) => (
+              <ListItemRowView
+                key={item.id}
+                item={item}
+                memberNamesByUserId={memberNamesByUserId}
+                highlighted={highlightedIds.has(item.id)}
+                toggling={togglingId === item.id}
+                deleting={deletingId === item.id}
+                onTogglePurchased={togglePurchased}
+                onDelete={setDeleteTarget}
+                groupId={groupId}
+                setItems={setItems}
+                trackLocalChange={trackLocalChange}
+              />
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       <Dialog
         open={deleteTarget !== null}

@@ -11,6 +11,7 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 import {
   createListItemAction,
   deleteListItemAction,
+  setListItemPurchasedAction,
   updateListItemAction,
 } from "@/app/app/groups/list-items-actions";
 import { initialListItemActionState } from "@/lib/auth/action-state";
@@ -34,6 +35,13 @@ function mockAuthedClient(options: {
     .mockResolvedValue(
       options.updateResult ?? options.deleteResult ?? { data: { id: ITEM_ID }, error: null },
     );
+  const update = vi.fn().mockReturnValue({
+    eq: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({ maybeSingle }),
+      }),
+    }),
+  });
 
   createClient.mockResolvedValue({
     auth: {
@@ -86,13 +94,7 @@ function mockAuthedClient(options: {
 
       return {
         insert,
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              select: vi.fn().mockReturnValue({ maybeSingle }),
-            }),
-          }),
-        }),
+        update,
         delete: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
@@ -104,7 +106,7 @@ function mockAuthedClient(options: {
     }),
   });
 
-  return { insert, maybeSingle };
+  return { insert, maybeSingle, update };
 }
 
 describe("list item actions", () => {
@@ -198,6 +200,32 @@ describe("list item actions", () => {
         formData({ groupId: "g1", itemId: ITEM_ID }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item removido." });
+  });
+
+  it("marks an item as purchased", async () => {
+    const { update } = mockAuthedClient({
+      updateResult: { data: { id: ITEM_ID }, error: null },
+    });
+
+    await expect(
+      setListItemPurchasedAction(
+        initialListItemActionState,
+        formData({ groupId: "g1", itemId: ITEM_ID, purchased: "true" }),
+      ),
+    ).resolves.toMatchObject({ status: "success", message: "Item marcado como comprado." });
+
+    expect(update).toHaveBeenCalledWith({ purchased: true });
+    expect(revalidatePath).toHaveBeenCalledWith("/app/groups/g1/list");
+  });
+
+  it("rejects purchased toggle without a valid flag", async () => {
+    await expect(
+      setListItemPurchasedAction(
+        initialListItemActionState,
+        formData({ groupId: "g1", itemId: ITEM_ID, purchased: "maybe" }),
+      ),
+    ).resolves.toMatchObject({ status: "error", message: "Item inválido." });
+    expect(createClient).not.toHaveBeenCalled();
   });
 
   it("blocks mutations without a session", async () => {
