@@ -9,6 +9,7 @@ import {
   getCurrentGroupMembership,
   type GroupMembership,
 } from "@/lib/groups/membership";
+import { isUuid } from "@/lib/lists/sync";
 import { validateListItemInput } from "@/lib/lists/validation";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
@@ -61,6 +62,7 @@ export async function createListItemAction(
   formData: FormData,
 ): Promise<ListItemActionState> {
   const groupId = readStringField(formData, "groupId");
+  const itemId = readStringField(formData, "itemId");
   const validation = validateListItemInput({
     name: formData.get("name"),
     quantity: formData.get("quantity"),
@@ -71,6 +73,10 @@ export async function createListItemAction(
     return actionError("Revise os campos destacados.", validation.fieldErrors);
   }
 
+  if (!isUuid(itemId)) {
+    return actionError("Item inválido.");
+  }
+
   try {
     const auth = await requireGroupMembership(groupId);
     if (!auth.ok) {
@@ -78,6 +84,7 @@ export async function createListItemAction(
     }
 
     const { error } = await auth.supabase.from("list_items").insert({
+      id: itemId,
       list_id: auth.membership.listId,
       name: validation.data.name,
       quantity: validation.data.quantity,
@@ -113,7 +120,7 @@ export async function updateListItemAction(
     unit: formData.get("unit"),
   });
 
-  if (!itemId) {
+  if (!isUuid(itemId)) {
     return actionError("Item inválido.");
   }
 
@@ -162,7 +169,7 @@ export async function deleteListItemAction(
   const groupId = readStringField(formData, "groupId");
   const itemId = readStringField(formData, "itemId");
 
-  if (!itemId) {
+  if (!isUuid(itemId)) {
     return actionError("Item inválido.");
   }
 

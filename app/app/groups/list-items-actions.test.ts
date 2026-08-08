@@ -21,6 +21,8 @@ function formData(values: Record<string, string>): FormData {
   return data;
 }
 
+const ITEM_ID = "11111111-1111-4111-8111-111111111111";
+
 function mockAuthedClient(options: {
   insertError?: unknown;
   updateResult?: { data: unknown; error: unknown };
@@ -30,7 +32,7 @@ function mockAuthedClient(options: {
   const maybeSingle = vi
     .fn()
     .mockResolvedValue(
-      options.updateResult ?? options.deleteResult ?? { data: { id: "item-1" }, error: null },
+      options.updateResult ?? options.deleteResult ?? { data: { id: ITEM_ID }, error: null },
     );
 
   createClient.mockResolvedValue({
@@ -128,17 +130,35 @@ describe("list item actions", () => {
     expect(createClient).not.toHaveBeenCalled();
   });
 
+  it("rejects create without a valid client item id", async () => {
+    await expect(
+      createListItemAction(
+        initialListItemActionState,
+        formData({ groupId: "g1", name: "Arroz", quantity: "1", unit: "", itemId: "bad" }),
+      ),
+    ).resolves.toMatchObject({ status: "error", message: "Item inválido." });
+
+    expect(createClient).not.toHaveBeenCalled();
+  });
+
   it("creates an item on the caller active list", async () => {
     const { insert } = mockAuthedClient({});
 
     await expect(
       createListItemAction(
         initialListItemActionState,
-        formData({ groupId: "g1", name: " Arroz ", quantity: "2,5", unit: " kg " }),
+        formData({
+          groupId: "g1",
+          itemId: ITEM_ID,
+          name: " Arroz ",
+          quantity: "2,5",
+          unit: " kg ",
+        }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item adicionado." });
 
     expect(insert).toHaveBeenCalledWith({
+      id: ITEM_ID,
       list_id: "list-1",
       name: "Arroz",
       quantity: 2.5,
@@ -150,7 +170,7 @@ describe("list item actions", () => {
 
   it("updates an item belonging to the group list", async () => {
     mockAuthedClient({
-      updateResult: { data: { id: "item-1" }, error: null },
+      updateResult: { data: { id: ITEM_ID }, error: null },
     });
 
     await expect(
@@ -158,7 +178,7 @@ describe("list item actions", () => {
         initialListItemActionState,
         formData({
           groupId: "g1",
-          itemId: "item-1",
+          itemId: ITEM_ID,
           name: "Feijão",
           quantity: "1",
           unit: "kg",
@@ -169,13 +189,13 @@ describe("list item actions", () => {
 
   it("deletes an item belonging to the group list", async () => {
     mockAuthedClient({
-      deleteResult: { data: { id: "item-1" }, error: null },
+      deleteResult: { data: { id: ITEM_ID }, error: null },
     });
 
     await expect(
       deleteListItemAction(
         initialListItemActionState,
-        formData({ groupId: "g1", itemId: "item-1" }),
+        formData({ groupId: "g1", itemId: ITEM_ID }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item removido." });
   });
@@ -190,7 +210,7 @@ describe("list item actions", () => {
     await expect(
       deleteListItemAction(
         initialListItemActionState,
-        formData({ groupId: "g1", itemId: "item-1" }),
+        formData({ groupId: "g1", itemId: ITEM_ID }),
       ),
     ).resolves.toMatchObject({
       status: "error",
