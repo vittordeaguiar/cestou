@@ -19,6 +19,7 @@ describe("auth route helpers", () => {
     expect(isProtectedPath("/app/grupos/123")).toBe(true);
     expect(isProtectedPath("/app/groups/new")).toBe(true);
     expect(isProtectedPath("/app/groups/abc/list")).toBe(true);
+    expect(isProtectedPath("/app/groups/abc/members")).toBe(true);
     expect(isProtectedPath("/")).toBe(false);
     expect(isProtectedPath("/auth/login")).toBe(false);
 

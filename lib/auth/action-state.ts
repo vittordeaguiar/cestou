@@ -35,3 +35,13 @@ export const initialGroupActionState: GroupActionState = {
   status: "idle",
   fieldErrors: {},
 };
+
+export type MemberActionState = {
+  status: "idle" | "error" | "success";
+  message?: string;
+  redirectTo?: string;
+};
+
+export const initialMemberActionState: MemberActionState = {
+  status: "idle",
+};
