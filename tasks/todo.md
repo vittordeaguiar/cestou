@@ -5,7 +5,7 @@
 - [x] Atualizar a partir de `main` e criar branch `cursor/v-47-group-members-management-c025`.
 - [x] Helpers de listagem + actions remove/leave alinhadas ao RLS.
 - [x] Página `/members`, painel com Dialog, link na lista, README.
-- [ ] Testes, checks sequenciais, commit/push e PR.
+- [x] Testes, checks sequenciais, commit/push e PR.
 
 ## Notas
 
