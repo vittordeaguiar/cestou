@@ -25,6 +25,7 @@ vi.mock("@/app/app/groups/list-items-actions", () => ({
 }));
 vi.mock("@/lib/lists/use-list-items-realtime", () => ({
   useListItemsRealtime: vi.fn(),
+  fetchListItemsSnapshot: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/toast", () => ({
   toast: { success: toastSuccess, error: toastError },
@@ -102,7 +103,7 @@ describe("ListItemsPanel", () => {
         {...baseProps}
         items={[
           {
-            id: "item-1",
+            id: "11111111-1111-4111-8111-111111111111",
             listId: "list-1",
             name: "Arroz",
             quantity: 2,
@@ -140,7 +141,7 @@ describe("ListItemsPanel", () => {
         {...baseProps}
         items={[
           {
-            id: "item-1",
+            id: "11111111-1111-4111-8111-111111111111",
             listId: "list-1",
             name: "Arroz",
             quantity: 2,
@@ -153,7 +154,9 @@ describe("ListItemsPanel", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Remover" }));
-    const confirmDelete = screen.getByRole("dialog").querySelector("button[data-variant='destructive']");
+    const confirmDelete = screen
+      .getByRole("dialog")
+      .querySelector("button[data-variant='destructive']");
     expect(confirmDelete).not.toBeNull();
     await user.click(confirmDelete as HTMLElement);
 

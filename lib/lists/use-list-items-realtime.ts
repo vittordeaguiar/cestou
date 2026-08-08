@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
-import type { ListItemRow } from "@/lib/lists/items";
+import { mapListItemRecord, type ListItemRow } from "@/lib/lists/items";
 import {
   applyListItemChange,
   type ListItemChangeEvent,
@@ -18,6 +18,8 @@ type UseListItemsRealtimeOptions = {
   listId: string;
   onChange: (updater: (items: ListItemRow[]) => ListItemRow[]) => void;
   onRemoteChange?: (itemId: string) => void;
+  /** Called after the channel is subscribed so the client can catch up missed rows. */
+  onSubscribed?: () => void | Promise<void>;
 };
 
 function toSyncPayload(
@@ -43,6 +45,21 @@ function changedItemId(payload: ListItemRealtimePayload): string | null {
   return typeof payload.new?.id === "string" ? payload.new.id : null;
 }
 
+export async function fetchListItemsSnapshot(listId: string): Promise<ListItemRow[] | null> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("list_items")
+    .select("id, list_id, name, quantity, unit, created_by, created_at")
+    .eq("list_id", listId)
+    .order("created_at", { ascending: true });
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data.map((item) => mapListItemRecord(item));
+}
+
 /**
  * Subscribes to postgres_changes on list_items for the group's active list.
  */
@@ -50,9 +67,11 @@ export function useListItemsRealtime({
   listId,
   onChange,
   onRemoteChange,
+  onSubscribed,
 }: UseListItemsRealtimeOptions) {
   const onChangeRef = useRef(onChange);
   const onRemoteChangeRef = useRef(onRemoteChange);
+  const onSubscribedRef = useRef(onSubscribed);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -61,6 +80,10 @@ export function useListItemsRealtime({
   useEffect(() => {
     onRemoteChangeRef.current = onRemoteChange;
   }, [onRemoteChange]);
+
+  useEffect(() => {
+    onSubscribedRef.current = onSubscribed;
+  }, [onSubscribed]);
 
   useEffect(() => {
     if (!listId) {
@@ -92,7 +115,11 @@ export function useListItemsRealtime({
           }
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          void onSubscribedRef.current?.();
+        }
+      });
 
     return () => {
       void supabase.removeChannel(channel);

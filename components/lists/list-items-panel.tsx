@@ -34,12 +34,16 @@ import { initialListItemActionState } from "@/lib/auth/action-state";
 import { formatItemQuantity, type ListItemRow } from "@/lib/lists/items";
 import {
   formatAddedByLabel,
+  mergeServerListItems,
   optimisticCreateItem,
   optimisticDeleteItem,
   optimisticUpdateItem,
   serializeListItemsSnapshot,
 } from "@/lib/lists/sync";
-import { useListItemsRealtime } from "@/lib/lists/use-list-items-realtime";
+import {
+  fetchListItemsSnapshot,
+  useListItemsRealtime,
+} from "@/lib/lists/use-list-items-realtime";
 import {
   LIST_ITEM_NAME_MAX_LENGTH,
   LIST_ITEM_UNIT_MAX_LENGTH,
@@ -331,50 +335,6 @@ function EditItemDialog({
   );
 }
 
-function DeleteItemDialog({
-  item,
-  pending,
-  onConfirm,
-}: {
-  item: ListItemRow;
-  pending: boolean;
-  onConfirm: (item: ListItemRow) => void;
-}) {
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          <Trash2Icon data-icon="inline-start" />
-          Remover
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Remover item</DialogTitle>
-          <DialogDescription>
-            “{item.name}” será removido da lista compartilhada. Esta ação não pode ser desfeita.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button type="button" variant="outline" disabled={pending}>
-              Cancelar
-            </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            loading={pending}
-            onClick={() => onConfirm(item)}
-          >
-            {pending ? "Removendo…" : "Remover"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function ListItemsPanel({
   groupId,
   listId,
@@ -384,6 +344,7 @@ function ListItemsPanel({
 }: ListItemsPanelProps) {
   const [items, setItems] = useState(serverItems);
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
+  const [deleteTarget, setDeleteTarget] = useState<ListItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startDeleteTransition] = useTransition();
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -431,20 +392,30 @@ function ListItemsPanel({
     localChangeTimersRef.current.set(itemId, timer);
   }
 
-  function confirmDelete(item: ListItemRow) {
-    if (deletingId) {
+  async function catchUpFromServer() {
+    const snapshot = await fetchListItemsSnapshot(listId);
+    if (!snapshot) {
       return;
     }
 
-    const snapshot = item;
-    setDeletingId(item.id);
-    trackLocalChange(item.id);
-    setItems((current) => optimisticDeleteItem(current, item.id));
+    setItems((current) => mergeServerListItems(current, snapshot, localChangeIdsRef.current));
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget || deletingId) {
+      return;
+    }
+
+    const snapshot = deleteTarget;
+    setDeleteTarget(null);
+    setDeletingId(snapshot.id);
+    trackLocalChange(snapshot.id);
+    setItems((current) => optimisticDeleteItem(current, snapshot.id));
 
     startDeleteTransition(async () => {
       const formData = new FormData();
       formData.set("groupId", groupId);
-      formData.set("itemId", item.id);
+      formData.set("itemId", snapshot.id);
 
       try {
         const result = await deleteListItemAction(initialListItemActionState, formData);
@@ -460,7 +431,7 @@ function ListItemsPanel({
         setItems((current) => optimisticCreateItem(current, snapshot));
         toast.error({ title: "Não foi possível remover o item. Tente novamente." });
       } finally {
-        setDeletingId((current) => (current === item.id ? null : current));
+        setDeletingId((current) => (current === snapshot.id ? null : current));
       }
     });
   }
@@ -468,6 +439,7 @@ function ListItemsPanel({
   useListItemsRealtime({
     listId,
     onChange: setItems,
+    onSubscribed: catchUpFromServer,
     onRemoteChange: (itemId) => {
       if (localChangeIdsRef.current.has(itemId)) {
         return;
@@ -551,11 +523,16 @@ function ListItemsPanel({
                       setItems={setItems}
                       trackLocalChange={trackLocalChange}
                     />
-                    <DeleteItemDialog
-                      item={item}
-                      pending={deletingId === item.id}
-                      onConfirm={confirmDelete}
-                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={deletingId === item.id}
+                      onClick={() => setDeleteTarget(item)}
+                    >
+                      <Trash2Icon data-icon="inline-start" />
+                      Remover
+                    </Button>
                   </div>
                 </li>
               );
@@ -563,6 +540,44 @@ function ListItemsPanel({
           </ul>
         )}
       </section>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingId) {
+            setDeleteTarget(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover item</DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? `“${deleteTarget.name}” será removido da lista compartilhada. Esta ação não pode ser desfeita.`
+                : "Este item será removido da lista compartilhada."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(deletingId)}
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              loading={Boolean(deletingId)}
+              onClick={confirmDelete}
+            >
+              {deletingId ? "Removendo…" : "Remover"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

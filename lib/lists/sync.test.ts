@@ -6,6 +6,7 @@ import {
   formatAddedByLabel,
   isUuid,
   mapRealtimeRowToListItem,
+  mergeServerListItems,
   optimisticCreateItem,
   optimisticDeleteItem,
   optimisticUpdateItem,
@@ -133,5 +134,29 @@ describe("list item sync helpers", () => {
     expect(formatAddedByLabel("user-1", { "user-1": "Ana" })).toBe("Adicionado por Ana");
     expect(formatAddedByLabel("user-1", { "user-1": "  " })).toBe("Adicionado por membro");
     expect(formatAddedByLabel(null, {})).toBeNull();
+  });
+
+  it("merges server snapshots with in-flight local rows", () => {
+    const pendingCreate: ListItemRow = {
+      ...baseItem,
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "Leite",
+      createdAt: "2026-08-08T12:01:00.000Z",
+    };
+    const serverOnly: ListItemRow = {
+      ...baseItem,
+      name: "Arroz integral",
+    };
+
+    const merged = mergeServerListItems(
+      [pendingCreate],
+      [serverOnly, { ...baseItem, id: "33333333-3333-4333-8333-333333333333", name: "Gone" }],
+      new Set(["33333333-3333-4333-8333-333333333333"]),
+    );
+
+    expect(merged.map((item) => item.id)).toEqual([
+      serverOnly.id,
+      pendingCreate.id,
+    ]);
   });
 });

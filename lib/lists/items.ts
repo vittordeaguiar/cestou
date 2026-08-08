@@ -12,6 +12,35 @@ export type ListItemRow = {
   createdAt: string;
 };
 
+type ListItemRecord = {
+  id: string;
+  list_id: string;
+  name: string;
+  quantity: number | string;
+  unit: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+export function mapListItemRecord(item: ListItemRecord): ListItemRow {
+  return {
+    id: item.id,
+    listId: item.list_id,
+    name: item.name,
+    quantity: Number(item.quantity),
+    unit: item.unit,
+    createdBy: item.created_by,
+    createdAt: item.created_at,
+  };
+}
+
+export function sortListItemsByCreatedAt(items: ListItemRow[]): ListItemRow[] {
+  return items.slice().sort((left, right) => {
+    const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+    return byCreatedAt !== 0 ? byCreatedAt : left.id.localeCompare(right.id);
+  });
+}
+
 export async function listActiveListItems(
   supabase: SupabaseClient<Database>,
   listId: string,
@@ -26,15 +55,7 @@ export async function listActiveListItems(
     return [];
   }
 
-  return data.map((item) => ({
-    id: item.id,
-    listId: item.list_id,
-    name: item.name,
-    quantity: Number(item.quantity),
-    unit: item.unit,
-    createdBy: item.created_by,
-    createdAt: item.created_at,
-  }));
+  return data.map((item) => mapListItemRecord(item));
 }
 
 export function formatItemQuantity(quantity: number, unit: string | null): string {

@@ -1,4 +1,4 @@
-import type { ListItemRow } from "@/lib/lists/items";
+import { sortListItemsByCreatedAt, type ListItemRow } from "@/lib/lists/items";
 
 export type ListItemChangeEvent = "INSERT" | "UPDATE" | "DELETE";
 
@@ -87,14 +87,33 @@ export function applyListItemChange(
     return items;
   }
 
-  return upsertItem(items, mapped);
+  return sortListItemsByCreatedAt(upsertItem(items, mapped));
 }
 
 export function optimisticCreateItem(
   items: ListItemRow[],
   item: ListItemRow,
 ): ListItemRow[] {
-  return upsertItem(items, item);
+  return sortListItemsByCreatedAt(upsertItem(items, item));
+}
+
+/** Merges a server snapshot with in-flight local optimistic rows. */
+export function mergeServerListItems(
+  current: ListItemRow[],
+  serverItems: ListItemRow[],
+  localChangeIds: ReadonlySet<string>,
+): ListItemRow[] {
+  const currentIds = new Set(current.map((item) => item.id));
+  const filteredServer = serverItems.filter((item) => {
+    // Keep optimistic deletes hidden until the server action settles.
+    if (localChangeIds.has(item.id) && !currentIds.has(item.id)) {
+      return false;
+    }
+    return true;
+  });
+  const serverIds = new Set(filteredServer.map((item) => item.id));
+  const inFlightCreates = current.filter((item) => !serverIds.has(item.id));
+  return sortListItemsByCreatedAt([...filteredServer, ...inFlightCreates]);
 }
 
 export function optimisticUpdateItem(

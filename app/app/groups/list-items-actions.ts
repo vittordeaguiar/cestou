@@ -120,7 +120,7 @@ export async function updateListItemAction(
     unit: formData.get("unit"),
   });
 
-  if (!itemId) {
+  if (!isUuid(itemId)) {
     return actionError("Item inválido.");
   }
 
@@ -169,7 +169,7 @@ export async function deleteListItemAction(
   const groupId = readStringField(formData, "groupId");
   const itemId = readStringField(formData, "itemId");
 
-  if (!itemId) {
+  if (!isUuid(itemId)) {
     return actionError("Item inválido.");
   }
 

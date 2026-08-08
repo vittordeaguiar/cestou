@@ -4,7 +4,10 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createClient, subscribe, on, channel, removeChannel } = vi.hoisted(() => {
-  const subscribe = vi.fn().mockReturnValue({ unsubscribe: vi.fn() });
+  const subscribe = vi.fn((callback?: (status: string) => void) => {
+    callback?.("SUBSCRIBED");
+    return { unsubscribe: vi.fn() };
+  });
   const on = vi.fn().mockReturnThis();
   const channel = vi.fn(() => ({ on, subscribe }));
   const removeChannel = vi.fn();
@@ -29,8 +32,9 @@ describe("useListItemsRealtime", () => {
 
   it("subscribes to list_items filtered by list id and cleans up", () => {
     const onChange = vi.fn();
+    const onSubscribed = vi.fn();
     const { unmount } = renderHook(() =>
-      useListItemsRealtime({ listId: "list-1", onChange }),
+      useListItemsRealtime({ listId: "list-1", onChange, onSubscribed }),
     );
 
     expect(channel).toHaveBeenCalledWith("list-items:list-1");
@@ -45,6 +49,7 @@ describe("useListItemsRealtime", () => {
       expect.any(Function),
     );
     expect(subscribe).toHaveBeenCalled();
+    expect(onSubscribed).toHaveBeenCalled();
 
     unmount();
     expect(removeChannel).toHaveBeenCalled();
