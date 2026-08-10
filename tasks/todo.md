@@ -1,13 +1,14 @@
-# V-48 — CRUD de itens da lista
+# V-51 — Tag opcional de categoria por item
 
 ## Plano
 
-- [x] Sync `main` e branch `cursor/v-48-list-items-crud-c025`.
-- [x] Migration `unit` + types + validação/helpers.
-- [x] Server actions CRUD + painel na página da lista.
-- [x] Testes, checks, commit/push e PR.
+- [x] Branch `cursor/v-51-item-category-tag-9bc8`.
+- [x] Wire `category` through row/selects/validation/sync (no migration).
+- [x] Persist on create/update actions.
+- [x] Selector + badge + client filter in list panel.
+- [x] Tests, README, commit/push e PR.
 
 ## Notas
 
-- Qualquer membro do grupo pode CRUD (RLS existente).
-- Fora de escopo: `purchased`, `category`, estimativa de preço.
+- Enum/coluna já existiam no schema (`mercado` | `farmacia` | `outro`, nullable).
+- Filtro é apenas visual; pending/Comprados permanecem a estrutura principal.

@@ -59,9 +59,7 @@ describe("useListItemsRealtime", () => {
     const onChange = vi.fn();
     const onRemoteChange = vi.fn();
 
-    renderHook(() =>
-      useListItemsRealtime({ listId: "list-1", onChange, onRemoteChange }),
-    );
+    renderHook(() => useListItemsRealtime({ listId: "list-1", onChange, onRemoteChange }));
 
     const handler = on.mock.calls[0]?.[2] as (payload: {
       eventType: string;

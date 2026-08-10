@@ -32,8 +32,14 @@ function toSyncPayload(
 
   return {
     eventType,
-    new: payload.new && typeof payload.new === "object" ? (payload.new as Record<string, unknown>) : null,
-    old: payload.old && typeof payload.old === "object" ? (payload.old as Record<string, unknown>) : null,
+    new:
+      payload.new && typeof payload.new === "object"
+        ? (payload.new as Record<string, unknown>)
+        : null,
+    old:
+      payload.old && typeof payload.old === "object"
+        ? (payload.old as Record<string, unknown>)
+        : null,
   };
 }
 
@@ -49,7 +55,7 @@ export async function fetchListItemsSnapshot(listId: string): Promise<ListItemRo
   const supabase = createClient();
   const { data, error } = await supabase
     .from("list_items")
-    .select("id, list_id, name, quantity, unit, purchased, created_by, created_at")
+    .select("id, list_id, name, quantity, unit, category, purchased, created_by, created_at")
     .eq("list_id", listId)
     .order("created_at", { ascending: true });
 

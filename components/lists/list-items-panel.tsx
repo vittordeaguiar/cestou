@@ -19,6 +19,7 @@ import {
   updateListItemAction,
 } from "@/app/app/groups/list-items-actions";
 import { EmptyState } from "@/components/feedback/empty-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,12 +33,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FieldInput } from "@/components/ui/field-input";
+import { Label } from "@/components/ui/label";
 import { initialListItemActionState } from "@/lib/auth/action-state";
 import {
-  formatItemQuantity,
-  partitionListItems,
-  type ListItemRow,
-} from "@/lib/lists/items";
+  CATEGORY_FILTER_OPTIONS,
+  filterListItemsByCategory,
+  formatItemCategory,
+  ITEM_CATEGORIES,
+  type CategoryFilter,
+} from "@/lib/lists/category";
+import { formatItemQuantity, partitionListItems, type ListItemRow } from "@/lib/lists/items";
 import {
   formatAddedByLabel,
   mergeServerListItems,
@@ -47,10 +52,7 @@ import {
   optimisticUpdateItem,
   serializeListItemsSnapshot,
 } from "@/lib/lists/sync";
-import {
-  fetchListItemsSnapshot,
-  useListItemsRealtime,
-} from "@/lib/lists/use-list-items-realtime";
+import { fetchListItemsSnapshot, useListItemsRealtime } from "@/lib/lists/use-list-items-realtime";
 import {
   LIST_ITEM_NAME_MAX_LENGTH,
   LIST_ITEM_UNIT_MAX_LENGTH,
@@ -59,6 +61,7 @@ import {
 } from "@/lib/lists/validation";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import type { ItemCategory } from "@/types";
 
 type ListItemsPanelProps = {
   groupId: string;
@@ -77,10 +80,17 @@ function ItemFields({
   pending,
 }: {
   idPrefix: string;
-  defaults?: { name?: string; quantity?: string; unit?: string };
+  defaults?: { name?: string; quantity?: string; unit?: string; category?: ItemCategory | null };
   fieldErrors: ListItemFieldErrors;
   pending: boolean;
 }) {
+  const categoryId = `${idPrefix}-category`;
+  const categoryDescriptionId = `${categoryId}-description`;
+  const categoryErrorId = `${categoryId}-error`;
+  const categoryDescribedBy = [categoryDescriptionId, fieldErrors.category ? categoryErrorId : null]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <fieldset disabled={pending} className="grid gap-4 disabled:opacity-100">
       <FieldInput
@@ -112,6 +122,37 @@ function ItemFields({
           description="Opcional"
           error={fieldErrors.unit}
         />
+      </div>
+      <div className="group/field flex w-full flex-col gap-2">
+        <Label htmlFor={categoryId}>Categoria</Label>
+        <select
+          id={categoryId}
+          name="category"
+          defaultValue={defaults?.category ?? ""}
+          aria-describedby={categoryDescribedBy}
+          aria-invalid={fieldErrors.category ? true : undefined}
+          className={cn(
+            "border-input bg-card text-body text-foreground h-11 min-h-11 w-full min-w-0 rounded-xl border px-3.5 py-2 shadow-xs transition-colors outline-none",
+            "focus-visible:border-ring focus-visible:ring-ring/40 focus-visible:ring-3",
+            "disabled:bg-muted disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-60",
+            fieldErrors.category && "border-destructive ring-destructive/20 ring-3",
+          )}
+        >
+          <option value="">Sem categoria</option>
+          {ITEM_CATEGORIES.map((category) => (
+            <option key={category} value={category}>
+              {formatItemCategory(category)}
+            </option>
+          ))}
+        </select>
+        <p id={categoryDescriptionId} className="text-caption text-muted-foreground">
+          Opcional
+        </p>
+        {fieldErrors.category ? (
+          <p id={categoryErrorId} role="alert" className="text-caption text-destructive">
+            {fieldErrors.category}
+          </p>
+        ) : null}
       </div>
     </fieldset>
   );
@@ -164,6 +205,7 @@ function AddItemForm({
       name: data.get("name"),
       quantity: data.get("quantity"),
       unit: data.get("unit"),
+      category: data.get("category"),
     });
     setClientErrors(result.fieldErrors);
     const validated = result.data;
@@ -186,6 +228,7 @@ function AddItemForm({
         name: validated.name,
         quantity: validated.quantity,
         unit: validated.unit,
+        category: validated.category,
         purchased: false,
         createdBy: currentUserId,
         createdAt: new Date().toISOString(),
@@ -260,6 +303,7 @@ function EditItemDialog({
           name: snapshot.name,
           quantity: snapshot.quantity,
           unit: snapshot.unit,
+          category: snapshot.category,
         }),
       );
       if (state.message && Object.keys(state.fieldErrors).length === 0) {
@@ -274,6 +318,7 @@ function EditItemDialog({
       name: data.get("name"),
       quantity: data.get("quantity"),
       unit: data.get("unit"),
+      category: data.get("category"),
     });
     setClientErrors(result.fieldErrors);
     const validated = result.data;
@@ -289,6 +334,7 @@ function EditItemDialog({
         name: validated.name,
         quantity: validated.quantity,
         unit: validated.unit,
+        category: validated.category,
       }),
     );
   }
@@ -304,7 +350,9 @@ function EditItemDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Editar item</DialogTitle>
-          <DialogDescription>Atualize o nome, a quantidade ou a unidade.</DialogDescription>
+          <DialogDescription>
+            Atualize o nome, a quantidade, a unidade ou a categoria.
+          </DialogDescription>
         </DialogHeader>
         <form action={formAction} noValidate onSubmit={validateBeforeSubmit} className="grid gap-4">
           <input type="hidden" name="groupId" value={groupId} />
@@ -315,6 +363,7 @@ function EditItemDialog({
               name: item.name,
               quantity: String(item.quantity),
               unit: item.unit ?? "",
+              category: item.category,
             }}
             fieldErrors={fieldErrors}
             pending={pending}
@@ -400,9 +449,14 @@ function ListItemRowView({
           >
             {item.name}
           </p>
-          <p className="text-small text-muted-foreground">
-            {formatItemQuantity(item.quantity, item.unit)}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-small text-muted-foreground">
+              {formatItemQuantity(item.quantity, item.unit)}
+            </p>
+            {item.category ? (
+              <Badge variant="outline">{formatItemCategory(item.category)}</Badge>
+            ) : null}
+          </div>
           {addedBy ? <p className="text-caption text-muted-foreground">{addedBy}</p> : null}
         </div>
       </div>
@@ -441,6 +495,7 @@ function ListItemsPanel({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(() => new Set());
   const [purchasedOpen, setPurchasedOpen] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [, startDeleteTransition] = useTransition();
   const [, startPurchaseTransition] = useTransition();
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -448,7 +503,10 @@ function ListItemsPanel({
   const localChangeIdsRef = useRef<Set<string>>(new Set());
   const serverSnapshot = serializeListItemsSnapshot(serverItems);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
-  const { pending, purchased } = partitionListItems(items);
+  const { pending: allPending, purchased: allPurchased } = partitionListItems(items);
+  const pending = filterListItemsByCategory(allPending, categoryFilter);
+  const purchased = filterListItemsByCategory(allPurchased, categoryFilter);
+  const hasFilterMatches = pending.length > 0 || purchased.length > 0;
 
   useEffect(() => {
     if (serverSnapshot === lastSyncedSnapshotRef.current) {
@@ -626,10 +684,35 @@ function ListItemsPanel({
           </p>
         </div>
 
+        {items.length > 0 ? (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar por categoria">
+            {CATEGORY_FILTER_OPTIONS.map((option) => {
+              const selected = categoryFilter === option.value;
+              return (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  variant={selected ? "default" : "outline"}
+                  aria-pressed={selected}
+                  onClick={() => setCategoryFilter(option.value)}
+                >
+                  {option.label}
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
+
         {items.length === 0 ? (
           <EmptyState
             title="Lista vazia"
             description="Adicione o primeiro item para começar a organizar as compras."
+          />
+        ) : !hasFilterMatches ? (
+          <EmptyState
+            title="Nenhum item nesta categoria"
+            description="Tente outro filtro ou limpe a seleção em Todas."
           />
         ) : pending.length === 0 ? (
           <EmptyState

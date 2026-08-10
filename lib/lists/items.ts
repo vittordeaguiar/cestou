@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isItemCategory } from "@/lib/lists/category";
+import type { ItemCategory } from "@/types";
 import type { Database } from "@/types/database";
 
 export type ListItemRow = {
@@ -8,6 +10,7 @@ export type ListItemRow = {
   name: string;
   quantity: number;
   unit: string | null;
+  category: ItemCategory | null;
   purchased: boolean;
   createdBy: string | null;
   createdAt: string;
@@ -19,10 +22,15 @@ type ListItemRecord = {
   name: string;
   quantity: number | string;
   unit: string | null;
+  category: string | null;
   purchased: boolean;
   created_by: string | null;
   created_at: string;
 };
+
+function readCategory(value: string | null): ItemCategory | null {
+  return isItemCategory(value) ? value : null;
+}
 
 export function mapListItemRecord(item: ListItemRecord): ListItemRow {
   return {
@@ -31,6 +39,7 @@ export function mapListItemRecord(item: ListItemRecord): ListItemRow {
     name: item.name,
     quantity: Number(item.quantity),
     unit: item.unit,
+    category: readCategory(item.category),
     purchased: Boolean(item.purchased),
     createdBy: item.created_by,
     createdAt: item.created_at,
@@ -71,7 +80,7 @@ export async function listActiveListItems(
 ): Promise<ListItemRow[]> {
   const { data, error } = await supabase
     .from("list_items")
-    .select("id, list_id, name, quantity, unit, purchased, created_by, created_at")
+    .select("id, list_id, name, quantity, unit, category, purchased, created_by, created_at")
     .eq("list_id", listId)
     .order("created_at", { ascending: true });
 

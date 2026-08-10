@@ -49,6 +49,7 @@ const arroz = {
   name: "Arroz",
   quantity: 2,
   unit: "kg",
+  category: null as null | "mercado" | "farmacia" | "outro",
   purchased: false,
   createdBy: "user-1",
   createdAt: "2026-08-08T12:00:00.000Z",
@@ -64,13 +65,10 @@ describe("ListItemsPanel", () => {
     setListItemPurchasedAction.mockReset();
     toastSuccess.mockReset();
     toastError.mockReset();
-    vi.stubGlobal(
-      "crypto",
-      {
-        ...crypto,
-        randomUUID: () => "11111111-1111-4111-8111-111111111111",
-      } as Crypto,
-    );
+    vi.stubGlobal("crypto", {
+      ...crypto,
+      randomUUID: () => "11111111-1111-4111-8111-111111111111",
+    } as Crypto);
   });
 
   it("shows client validation errors when adding without a name", async () => {
@@ -129,12 +127,7 @@ describe("ListItemsPanel", () => {
   });
 
   it("shows purchased items in the Comprados section on load", () => {
-    render(
-      <ListItemsPanel
-        {...baseProps}
-        items={[{ ...arroz, purchased: true }]}
-      />,
-    );
+    render(<ListItemsPanel {...baseProps} items={[{ ...arroz, purchased: true }]} />);
 
     expect(screen.getByText("Nada pendente")).not.toBeNull();
     expect(screen.getByText("Comprados (1)")).not.toBeNull();
@@ -209,6 +202,54 @@ describe("ListItemsPanel", () => {
     });
     expect(toastError).toHaveBeenCalledWith({
       title: "Não foi possível remover o item. Tente novamente.",
+    });
+  });
+
+  it("shows a category badge and filters the list by category", async () => {
+    const user = userEvent.setup();
+    const farmaciaItem = {
+      ...arroz,
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "Dipirona",
+      category: "farmacia" as const,
+      unit: null,
+      quantity: 1,
+    };
+
+    render(
+      <ListItemsPanel {...baseProps} items={[{ ...arroz, category: "mercado" }, farmaciaItem]} />,
+    );
+
+    expect(screen.getByText("Arroz").closest("li")?.textContent).toContain("Mercado");
+    expect(screen.getByText("Dipirona").closest("li")?.textContent).toContain("Farmácia");
+
+    await user.click(screen.getByRole("button", { name: "Mercado" }));
+    expect(screen.getByText("Arroz")).not.toBeNull();
+    expect(screen.queryByText("Dipirona")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Farmácia" }));
+    expect(screen.getByText("Dipirona")).not.toBeNull();
+    expect(screen.queryByText("Arroz")).toBeNull();
+  });
+
+  it("includes selected category when adding an item", async () => {
+    const user = userEvent.setup();
+    createListItemAction.mockImplementation(async () => ({
+      status: "success",
+      fieldErrors: {},
+      message: "Item adicionado.",
+    }));
+
+    render(<ListItemsPanel {...baseProps} items={[]} />);
+
+    await user.type(screen.getByLabelText("Nome"), "Sabonete");
+    await user.selectOptions(screen.getByLabelText("Categoria"), "farmacia");
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
+
+    expect(screen.getByText("Sabonete").closest("li")?.textContent).toContain("Farmácia");
+
+    await waitFor(() => {
+      expect(createListItemAction).toHaveBeenCalled();
     });
   });
 });
