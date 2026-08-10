@@ -19,7 +19,14 @@ function readRequired(name: string, value: string | undefined): string {
 }
 
 /** Public application URL used by Supabase Auth configuration. */
-export function getSupabaseSiteUrl(env: EnvironmentVariables = process.env): string {
+export function getSupabaseSiteUrl(
+  env: EnvironmentVariables = {
+    // Reference the keys literally so the bundler can inline the values into the
+    // browser bundle. Aliasing `process.env` (e.g. `env.NEXT_PUBLIC_*`) is not
+    // statically replaced and would be undefined on the client.
+    NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+  },
+): string {
   const siteUrl = readRequired("NEXT_PUBLIC_SITE_URL", env.NEXT_PUBLIC_SITE_URL);
 
   try {
@@ -36,7 +43,16 @@ export function getSupabaseSiteUrl(env: EnvironmentVariables = process.env): str
 }
 
 /** Public Supabase URL + anon/publishable key (safe for the browser). */
-export function getSupabasePublicEnv(env: EnvironmentVariables = process.env): SupabasePublicEnv {
+export function getSupabasePublicEnv(
+  env: EnvironmentVariables = {
+    // Reference the keys literally so the bundler can inline the values into the
+    // browser bundle. Aliasing `process.env` (e.g. `env.NEXT_PUBLIC_*`) is not
+    // statically replaced and would be undefined on the client.
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  },
+): SupabasePublicEnv {
   const url = readRequired("NEXT_PUBLIC_SUPABASE_URL", env.NEXT_PUBLIC_SUPABASE_URL);
 
   const anonKey = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
