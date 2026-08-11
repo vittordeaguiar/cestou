@@ -8,6 +8,7 @@ const pendingItem: ListItemRow = {
   name: "Arroz",
   quantity: 2,
   unit: "kg",
+  category: null,
   purchased: false,
   createdBy: "user-1",
   createdAt: "2026-08-08T12:00:00.000Z",

@@ -67,6 +67,7 @@ export async function createListItemAction(
     name: formData.get("name"),
     quantity: formData.get("quantity"),
     unit: formData.get("unit"),
+    category: formData.get("category"),
   });
 
   if (!validation.data) {
@@ -89,6 +90,7 @@ export async function createListItemAction(
       name: validation.data.name,
       quantity: validation.data.quantity,
       unit: validation.data.unit,
+      category: validation.data.category,
       created_by: auth.userId,
     });
 
@@ -118,6 +120,7 @@ export async function updateListItemAction(
     name: formData.get("name"),
     quantity: formData.get("quantity"),
     unit: formData.get("unit"),
+    category: formData.get("category"),
   });
 
   if (!isUuid(itemId)) {
@@ -140,6 +143,7 @@ export async function updateListItemAction(
         name: validation.data.name,
         quantity: validation.data.quantity,
         unit: validation.data.unit,
+        category: validation.data.category,
       })
       .eq("id", itemId)
       .eq("list_id", auth.membership.listId)

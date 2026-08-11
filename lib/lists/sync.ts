@@ -1,4 +1,6 @@
+import { isItemCategory } from "@/lib/lists/category";
 import { sortListItemsByCreatedAt, type ListItemRow } from "@/lib/lists/items";
+import type { ItemCategory } from "@/types";
 
 export type ListItemChangeEvent = "INSERT" | "UPDATE" | "DELETE";
 
@@ -43,6 +45,10 @@ function readPurchased(value: unknown): boolean {
   return false;
 }
 
+function readCategory(value: unknown): ItemCategory | null {
+  return isItemCategory(value) ? value : null;
+}
+
 /** Maps a postgres_changes row payload into the client list item shape. */
 export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItemRow | null {
   const id = readString(row.id);
@@ -60,6 +66,7 @@ export function mapRealtimeRowToListItem(row: Record<string, unknown>): ListItem
     name,
     quantity,
     unit: readString(row.unit),
+    category: readCategory(row.category),
     purchased: readPurchased(row.purchased),
     createdBy: readString(row.created_by),
     createdAt: readString(row.created_at) ?? new Date().toISOString(),
@@ -103,10 +110,7 @@ export function applyListItemChange(
   return sortListItemsByCreatedAt(upsertItem(items, mapped));
 }
 
-export function optimisticCreateItem(
-  items: ListItemRow[],
-  item: ListItemRow,
-): ListItemRow[] {
+export function optimisticCreateItem(items: ListItemRow[], item: ListItemRow): ListItemRow[] {
   return sortListItemsByCreatedAt(upsertItem(items, item));
 }
 
@@ -140,7 +144,7 @@ export function mergeServerListItems(
 export function optimisticUpdateItem(
   items: ListItemRow[],
   itemId: string,
-  patch: Pick<ListItemRow, "name" | "quantity" | "unit">,
+  patch: Pick<ListItemRow, "name" | "quantity" | "unit" | "category">,
 ): ListItemRow[] {
   return items.map((item) => (item.id === itemId ? { ...item, ...patch } : item));
 }
@@ -162,7 +166,7 @@ export function serializeListItemsSnapshot(items: ListItemRow[]): string {
   return items
     .map(
       (item) =>
-        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.purchased ? "1" : "0"}:${item.createdBy ?? ""}:${item.createdAt}`,
+        `${item.id}:${item.listId}:${item.name}:${item.quantity}:${item.unit ?? ""}:${item.category ?? ""}:${item.purchased ? "1" : "0"}:${item.createdBy ?? ""}:${item.createdAt}`,
     )
     .join("|");
 }

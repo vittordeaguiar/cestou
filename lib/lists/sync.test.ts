@@ -20,6 +20,7 @@ const baseItem: ListItemRow = {
   name: "Arroz",
   quantity: 2,
   unit: "kg",
+  category: null,
   purchased: false,
   createdBy: "user-1",
   createdAt: "2026-08-08T12:00:00.000Z",
@@ -31,7 +32,7 @@ describe("list item sync helpers", () => {
     expect(isUuid("item-1")).toBe(false);
   });
 
-  it("maps realtime rows including purchased and ignores incomplete payloads", () => {
+  it("maps realtime rows including purchased and category and ignores incomplete payloads", () => {
     expect(
       mapRealtimeRowToListItem({
         id: baseItem.id,
@@ -39,6 +40,7 @@ describe("list item sync helpers", () => {
         name: baseItem.name,
         quantity: "2.5",
         unit: "kg",
+        category: "mercado",
         purchased: true,
         created_by: "user-1",
         created_at: baseItem.createdAt,
@@ -46,6 +48,7 @@ describe("list item sync helpers", () => {
     ).toEqual({
       ...baseItem,
       quantity: 2.5,
+      category: "mercado",
       purchased: true,
     });
 
@@ -57,7 +60,7 @@ describe("list item sync helpers", () => {
         quantity: 1,
         created_at: baseItem.createdAt,
       }),
-    ).toMatchObject({ purchased: false });
+    ).toMatchObject({ purchased: false, category: null });
 
     expect(mapRealtimeRowToListItem({ id: baseItem.id, name: "Arroz" })).toBeNull();
   });
@@ -113,8 +116,14 @@ describe("list item sync helpers", () => {
       name: "Feijão",
       quantity: 1,
       unit: null,
+      category: "mercado",
     });
-    expect(patched[0]).toMatchObject({ name: "Feijão", quantity: 1, unit: null });
+    expect(patched[0]).toMatchObject({
+      name: "Feijão",
+      quantity: 1,
+      unit: null,
+      category: "mercado",
+    });
 
     const purchased = optimisticSetPurchased(patched, baseItem.id, true);
     expect(purchased[0]?.purchased).toBe(true);
@@ -122,11 +131,14 @@ describe("list item sync helpers", () => {
     expect(optimisticDeleteItem(purchased, baseItem.id)).toEqual([]);
   });
 
-  it("serializes snapshots including purchased state", () => {
+  it("serializes snapshots including purchased and category state", () => {
     expect(serializeListItemsSnapshot([baseItem])).toContain(":0:");
     expect(serializeListItemsSnapshot([{ ...baseItem, purchased: true }])).toContain(":1:");
     expect(serializeListItemsSnapshot([baseItem])).not.toBe(
       serializeListItemsSnapshot([{ ...baseItem, purchased: true }]),
+    );
+    expect(serializeListItemsSnapshot([{ ...baseItem, category: "farmacia" }])).toContain(
+      ":farmacia:",
     );
   });
 

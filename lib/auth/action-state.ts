@@ -48,7 +48,7 @@ export const initialMemberActionState: MemberActionState = {
 
 export type ListItemActionState = {
   status: "idle" | "error" | "success";
-  fieldErrors: FieldErrors<"name" | "quantity" | "unit">;
+  fieldErrors: FieldErrors<"name" | "quantity" | "unit" | "category">;
   message?: string;
 };
 

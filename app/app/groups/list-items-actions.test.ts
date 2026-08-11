@@ -155,6 +155,7 @@ describe("list item actions", () => {
           name: " Arroz ",
           quantity: "2,5",
           unit: " kg ",
+          category: "mercado",
         }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item adicionado." });
@@ -165,13 +166,14 @@ describe("list item actions", () => {
       name: "Arroz",
       quantity: 2.5,
       unit: "kg",
+      category: "mercado",
       created_by: "user-1",
     });
     expect(revalidatePath).toHaveBeenCalledWith("/app/groups/g1/list");
   });
 
   it("updates an item belonging to the group list", async () => {
-    mockAuthedClient({
+    const { update } = mockAuthedClient({
       updateResult: { data: { id: ITEM_ID }, error: null },
     });
 
@@ -184,9 +186,39 @@ describe("list item actions", () => {
           name: "Feijão",
           quantity: "1",
           unit: "kg",
+          category: "outro",
         }),
       ),
     ).resolves.toMatchObject({ status: "success", message: "Item atualizado." });
+
+    expect(update).toHaveBeenCalledWith({
+      name: "Feijão",
+      quantity: 1,
+      unit: "kg",
+      category: "outro",
+    });
+  });
+
+  it("stores null category when the selector is empty", async () => {
+    const { insert } = mockAuthedClient({});
+
+    await createListItemAction(
+      initialListItemActionState,
+      formData({
+        groupId: "g1",
+        itemId: ITEM_ID,
+        name: "Arroz",
+        quantity: "1",
+        unit: "",
+        category: "",
+      }),
+    );
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: null,
+      }),
+    );
   });
 
   it("deletes an item belonging to the group list", async () => {

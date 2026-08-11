@@ -18,9 +18,10 @@ describe("validateListItemInput", () => {
         name: "  Arroz  5kg ",
         quantity: "2,5",
         unit: "  kg ",
+        category: "mercado",
       }),
     ).toEqual({
-      data: { name: "Arroz 5kg", quantity: 2.5, unit: "kg" },
+      data: { name: "Arroz 5kg", quantity: 2.5, unit: "kg", category: "mercado" },
       fieldErrors: {},
     });
   });
@@ -36,7 +37,7 @@ describe("validateListItemInput", () => {
 
   it("treats blank unit as null and rejects oversized unit", () => {
     expect(validateListItemInput({ name: "Leite", quantity: "1", unit: "   " })).toEqual({
-      data: { name: "Leite", quantity: 1, unit: null },
+      data: { name: "Leite", quantity: 1, unit: null, category: null },
       fieldErrors: {},
     });
 
@@ -44,5 +45,23 @@ describe("validateListItemInput", () => {
       validateListItemInput({ name: "Leite", quantity: "1", unit: "u".repeat(21) }).fieldErrors
         .unit,
     ).toMatch(/no máximo 20/);
+  });
+
+  it("accepts blank category as null and rejects unknown values", () => {
+    expect(
+      validateListItemInput({ name: "Dipirona", quantity: "1", unit: "", category: "" }),
+    ).toEqual({
+      data: { name: "Dipirona", quantity: 1, unit: null, category: null },
+      fieldErrors: {},
+    });
+
+    expect(
+      validateListItemInput({
+        name: "Dipirona",
+        quantity: "1",
+        unit: "",
+        category: "padaria",
+      }).fieldErrors.category,
+    ).toBe("Selecione uma categoria válida.");
   });
 });

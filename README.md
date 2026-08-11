@@ -38,11 +38,12 @@ npm run dev
 - Antes do índice único, as migrations reconciliam memberships duplicadas (preferem `owner`, senão a mais antiga; promovem owner se um grupo ficaria órfão; removem grupos vazios).
 - Nome do grupo: máximo 80 caracteres na UI, na RPC `create_group` e na constraint `groups_name_max_length`.
 
-## Lista (V-48)
+## Lista (V-48 / V-50 / V-51)
 
 - Em `/app/groups/[groupId]/list`, membros adicionam/editan/removem itens em `list_items` (nome, quantidade > 0, unidade opcional).
 - Persistência via sessão do usuário e RLS; `created_by` é preenchido na criação e permanece imutável.
 - Unidade opcional: coluna `unit` (texto livre, máx. 20).
+- Tag opcional `category` (`mercado` | `farmacia` | `outro`) no item, com seletor ao adicionar/editar, badge na linha e filtro visual client-side (não separa listas).
 
 ## Scripts
 
