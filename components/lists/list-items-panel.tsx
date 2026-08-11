@@ -1,8 +1,11 @@
 "use client";
 
 import {
+  memo,
   useActionState,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -10,7 +13,7 @@ import {
   type FormEvent,
   type SetStateAction,
 } from "react";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, PlusIcon, ShoppingBasketIcon, Trash2Icon } from "lucide-react";
 
 import {
   createListItemAction,
@@ -24,16 +27,22 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { FieldInput } from "@/components/ui/field-input";
 import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { initialListItemActionState } from "@/lib/auth/action-state";
 import {
   CATEGORY_FILTER_OPTIONS,
@@ -158,18 +167,22 @@ function ItemFields({
   );
 }
 
-function AddItemForm({
+function AddItemSheet({
   groupId,
   listId,
   currentUserId,
   setItems,
   trackLocalChange,
+  setOpen,
+  onRestoreFocus,
 }: {
   groupId: string;
   listId: string;
   currentUserId: string;
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
   trackLocalChange: (itemId: string) => void;
+  setOpen: Dispatch<SetStateAction<boolean>>;
+  onRestoreFocus: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const itemIdInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +199,7 @@ function AddItemForm({
       toast.success({ title: state.message ?? "Item adicionado." });
       formRef.current?.reset();
       pendingItemIdRef.current = null;
+      setOpen(false);
       return;
     }
 
@@ -197,7 +211,7 @@ function AddItemForm({
         toast.error({ title: state.message });
       }
     }
-  }, [setItems, state]);
+  }, [setItems, setOpen, state]);
 
   function validateBeforeSubmit(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget);
@@ -237,33 +251,53 @@ function AddItemForm({
   }
 
   return (
-    <form
-      ref={formRef}
-      action={formAction}
-      noValidate
-      onSubmit={validateBeforeSubmit}
-      className="border-border grid gap-4 rounded-2xl border p-4"
+    <Sheet
+      open
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && pending) {
+          return;
+        }
+        setOpen(nextOpen);
+      }}
     >
-      <input type="hidden" name="groupId" value={groupId} />
-      <input ref={itemIdInputRef} type="hidden" name="itemId" defaultValue="" />
-      <div className="space-y-1">
-        <h2 className="text-h3 text-foreground">Adicionar item</h2>
-        <p className="text-small text-muted-foreground">
-          Nome obrigatório e quantidade maior que zero.
-        </p>
-      </div>
-      <ItemFields idPrefix="add-item" fieldErrors={fieldErrors} pending={pending} />
-      {state.status === "error" && state.message ? (
-        <p role="alert" className="text-small text-destructive">
-          {state.message}
-        </p>
-      ) : null}
-      <Button type="submit" className="w-full sm:w-auto" loading={pending}>
-        {pending ? "Adicionando…" : null}
-        {!pending ? <PlusIcon data-icon="inline-start" /> : null}
-        {!pending ? "Adicionar item" : null}
-      </Button>
-    </form>
+      <SheetContent
+        className="mx-auto w-full max-w-lg border-x"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onRestoreFocus();
+        }}
+      >
+        <SheetHeader>
+          <SheetTitle>Adicionar item</SheetTitle>
+          <SheetDescription>Informe o item, a quantidade e os detalhes opcionais.</SheetDescription>
+        </SheetHeader>
+        <form
+          ref={formRef}
+          action={formAction}
+          noValidate
+          onSubmit={validateBeforeSubmit}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <input type="hidden" name="groupId" value={groupId} />
+          <input ref={itemIdInputRef} type="hidden" name="itemId" defaultValue="" />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <ItemFields idPrefix="add-item" fieldErrors={fieldErrors} pending={pending} />
+            {state.status === "error" && state.message ? (
+              <p role="alert" className="text-small text-destructive mt-4">
+                {state.message}
+              </p>
+            ) : null}
+          </div>
+          <SheetFooter className="shrink-0">
+            <Button type="submit" className="w-full" loading={pending}>
+              {pending ? "Adicionando…" : null}
+              {!pending ? <PlusIcon data-icon="inline-start" /> : null}
+              {!pending ? "Adicionar item" : null}
+            </Button>
+          </SheetFooter>
+        </form>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -272,13 +306,16 @@ function EditItemDialog({
   item,
   setItems,
   trackLocalChange,
+  onClose,
+  onRestoreFocus,
 }: {
   groupId: string;
   item: ListItemRow;
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
   trackLocalChange: (itemId: string) => void;
+  onClose: () => void;
+  onRestoreFocus: () => void;
 }) {
-  const closeRef = useRef<HTMLButtonElement>(null);
   const snapshotRef = useRef<ListItemRow | null>(null);
   const [state, formAction, pending] = useActionState(
     updateListItemAction,
@@ -290,8 +327,8 @@ function EditItemDialog({
   useEffect(() => {
     if (state.status === "success") {
       toast.success({ title: state.message ?? "Item atualizado." });
-      closeRef.current?.click();
       snapshotRef.current = null;
+      onClose();
       return;
     }
 
@@ -310,7 +347,7 @@ function EditItemDialog({
         toast.error({ title: state.message });
       }
     }
-  }, [setItems, state]);
+  }, [onClose, setItems, state]);
 
   function validateBeforeSubmit(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget);
@@ -340,14 +377,21 @@ function EditItemDialog({
   }
 
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          <PencilIcon data-icon="inline-start" />
-          Editar
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !pending) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onRestoreFocus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Editar item</DialogTitle>
           <DialogDescription>
@@ -374,14 +418,9 @@ function EditItemDialog({
             </p>
           ) : null}
           <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" disabled={pending}>
-                Cancelar
-              </Button>
-            </DialogClose>
-            <DialogClose ref={closeRef} className="sr-only">
-              Fechar
-            </DialogClose>
+            <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
+              Cancelar
+            </Button>
             <Button type="submit" loading={pending}>
               {pending ? "Salvando…" : "Salvar"}
             </Button>
@@ -392,17 +431,15 @@ function EditItemDialog({
   );
 }
 
-function ListItemRowView({
+const ListItemRowView = memo(function ListItemRowView({
   item,
   memberNamesByUserId,
   highlighted,
   toggling,
   deleting,
   onTogglePurchased,
+  onEdit,
   onDelete,
-  groupId,
-  setItems,
-  trackLocalChange,
 }: {
   item: ListItemRow;
   memberNamesByUserId: Record<string, string | null>;
@@ -410,10 +447,8 @@ function ListItemRowView({
   toggling: boolean;
   deleting: boolean;
   onTogglePurchased: (item: ListItemRow, purchased: boolean) => void;
+  onEdit: (itemId: string, trigger: HTMLButtonElement) => void;
   onDelete: (item: ListItemRow) => void;
-  groupId: string;
-  setItems: Dispatch<SetStateAction<ListItemRow[]>>;
-  trackLocalChange: (itemId: string) => void;
 }) {
   const addedBy = formatAddedByLabel(item.createdBy, memberNamesByUserId);
   const checkboxLabel = item.purchased
@@ -461,12 +496,15 @@ function ListItemRowView({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 pl-8 sm:pl-0">
-        <EditItemDialog
-          groupId={groupId}
-          item={item}
-          setItems={setItems}
-          trackLocalChange={trackLocalChange}
-        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={(event) => onEdit(item.id, event.currentTarget)}
+        >
+          <PencilIcon data-icon="inline-start" />
+          Editar
+        </Button>
         <Button
           type="button"
           variant="outline"
@@ -480,7 +518,7 @@ function ListItemRowView({
       </div>
     </li>
   );
-}
+});
 
 function ListItemsPanel({
   groupId,
@@ -490,7 +528,9 @@ function ListItemsPanel({
   items: serverItems,
 }: ListItemsPanelProps) {
   const [items, setItems] = useState(serverItems);
+  const [addOpen, setAddOpen] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ListItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(() => new Set());
@@ -501,11 +541,24 @@ function ListItemsPanel({
   const highlightTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const localChangeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const localChangeIdsRef = useRef<Set<string>>(new Set());
-  const serverSnapshot = serializeListItemsSnapshot(serverItems);
+  const togglingIdsRef = useRef<Set<string>>(new Set());
+  const itemsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const addTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const addFabRef = useRef<HTMLButtonElement>(null);
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const serverSnapshot = useMemo(() => serializeListItemsSnapshot(serverItems), [serverItems]);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
-  const { pending: allPending, purchased: allPurchased } = partitionListItems(items);
-  const pending = filterListItemsByCategory(allPending, categoryFilter);
-  const purchased = filterListItemsByCategory(allPurchased, categoryFilter);
+  const editTarget = useMemo(
+    () => items.find((item) => item.id === editTargetId) ?? null,
+    [editTargetId, items],
+  );
+  const { pending, purchased } = useMemo(() => {
+    const partitioned = partitionListItems(items);
+    return {
+      pending: filterListItemsByCategory(partitioned.pending, categoryFilter),
+      purchased: filterListItemsByCategory(partitioned.purchased, categoryFilter),
+    };
+  }, [categoryFilter, items]);
   const hasFilterMatches = pending.length > 0 || purchased.length > 0;
 
   useEffect(() => {
@@ -521,16 +574,18 @@ function ListItemsPanel({
     const highlightTimers = highlightTimersRef.current;
     const localChangeTimers = localChangeTimersRef.current;
     const localChangeIds = localChangeIdsRef.current;
+    const togglingIds = togglingIdsRef.current;
     return () => {
       highlightTimers.forEach((timer) => clearTimeout(timer));
       highlightTimers.clear();
       localChangeTimers.forEach((timer) => clearTimeout(timer));
       localChangeTimers.clear();
       localChangeIds.clear();
+      togglingIds.clear();
     };
   }, []);
 
-  function trackLocalChange(itemId: string) {
+  const trackLocalChange = useCallback((itemId: string) => {
     localChangeIdsRef.current.add(itemId);
 
     const existingTimer = localChangeTimersRef.current.get(itemId);
@@ -545,56 +600,83 @@ function ListItemsPanel({
     }, REMOTE_HIGHLIGHT_MS);
 
     localChangeTimersRef.current.set(itemId, timer);
-  }
+  }, []);
 
-  async function catchUpFromServer() {
+  const catchUpFromServer = useCallback(async () => {
     const snapshot = await fetchListItemsSnapshot(listId);
     if (!snapshot) {
       return;
     }
 
     setItems((current) => mergeServerListItems(current, snapshot, localChangeIdsRef.current));
-  }
+  }, [listId]);
 
-  function togglePurchased(item: ListItemRow, nextPurchased: boolean) {
-    if (togglingIds.has(item.id) || item.purchased === nextPurchased) {
-      return;
-    }
-
-    const previousPurchased = item.purchased;
-    setTogglingIds((current) => {
-      const next = new Set(current);
-      next.add(item.id);
-      return next;
-    });
-    trackLocalChange(item.id);
-    setItems((current) => optimisticSetPurchased(current, item.id, nextPurchased));
-
-    startPurchaseTransition(async () => {
-      const formData = new FormData();
-      formData.set("groupId", groupId);
-      formData.set("itemId", item.id);
-      formData.set("purchased", String(nextPurchased));
-
-      try {
-        const result = await setListItemPurchasedAction(initialListItemActionState, formData);
-
-        if (result.status === "error") {
-          setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
-          toast.error({ title: result.message ?? "Não foi possível atualizar o item." });
-        }
-      } catch {
-        setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
-        toast.error({ title: "Não foi possível atualizar o item. Tente novamente." });
-      } finally {
-        setTogglingIds((current) => {
-          const next = new Set(current);
-          next.delete(item.id);
-          return next;
-        });
+  const togglePurchased = useCallback(
+    (item: ListItemRow, nextPurchased: boolean) => {
+      if (togglingIdsRef.current.has(item.id) || item.purchased === nextPurchased) {
+        return;
       }
-    });
-  }
+
+      const previousPurchased = item.purchased;
+      togglingIdsRef.current.add(item.id);
+      setTogglingIds((current) => {
+        const next = new Set(current);
+        next.add(item.id);
+        return next;
+      });
+      trackLocalChange(item.id);
+      setItems((current) => optimisticSetPurchased(current, item.id, nextPurchased));
+
+      startPurchaseTransition(async () => {
+        const formData = new FormData();
+        formData.set("groupId", groupId);
+        formData.set("itemId", item.id);
+        formData.set("purchased", String(nextPurchased));
+
+        try {
+          const result = await setListItemPurchasedAction(initialListItemActionState, formData);
+
+          if (result.status === "error") {
+            setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
+            toast.error({ title: result.message ?? "Não foi possível atualizar o item." });
+          }
+        } catch {
+          setItems((current) => optimisticSetPurchased(current, item.id, previousPurchased));
+          toast.error({ title: "Não foi possível atualizar o item. Tente novamente." });
+        } finally {
+          togglingIdsRef.current.delete(item.id);
+          setTogglingIds((current) => {
+            const next = new Set(current);
+            next.delete(item.id);
+            return next;
+          });
+        }
+      });
+    },
+    [groupId, startPurchaseTransition, trackLocalChange],
+  );
+
+  const closeEditDialog = useCallback(() => setEditTargetId(null), []);
+  const openEditDialog = useCallback((itemId: string, trigger: HTMLButtonElement) => {
+    editTriggerRef.current = trigger;
+    setEditTargetId(itemId);
+  }, []);
+  const openAddSheet = useCallback((trigger: HTMLButtonElement) => {
+    addTriggerRef.current = trigger;
+    setAddOpen(true);
+  }, []);
+  const restoreEditFocus = useCallback(() => {
+    const target = editTriggerRef.current?.isConnected
+      ? editTriggerRef.current
+      : itemsHeadingRef.current;
+    target?.focus();
+  }, []);
+  const restoreAddFocus = useCallback(() => {
+    const target = addTriggerRef.current?.isConnected
+      ? addTriggerRef.current
+      : (addFabRef.current ?? itemsHeadingRef.current);
+    target?.focus();
+  }, []);
 
   function confirmDelete() {
     if (!deleteTarget || deletingId) {
@@ -665,18 +747,15 @@ function ListItemsPanel({
   });
 
   return (
-    <div className="grid gap-8">
-      <AddItemForm
-        groupId={groupId}
-        listId={listId}
-        currentUserId={currentUserId}
-        setItems={setItems}
-        trackLocalChange={trackLocalChange}
-      />
-
+    <div className="grid gap-8 pb-24">
       <section className="grid gap-3" aria-labelledby="items-heading">
         <div className="space-y-1">
-          <h2 id="items-heading" className="text-h3 text-foreground">
+          <h2
+            ref={itemsHeadingRef}
+            id="items-heading"
+            tabIndex={-1}
+            className="text-h3 text-foreground"
+          >
             Itens
           </h2>
           <p className="text-small text-muted-foreground">
@@ -706,8 +785,15 @@ function ListItemsPanel({
 
         {items.length === 0 ? (
           <EmptyState
-            title="Lista vazia"
-            description="Adicione o primeiro item para começar a organizar as compras."
+            icon={<ShoppingBasketIcon className="size-8" />}
+            title="Sua lista está pronta para começar"
+            description="Adicione os primeiros itens agora. Quando a lista estiver pronta, você poderá solicitar uma estimativa de gasto."
+            action={
+              <Button type="button" onClick={(event) => openAddSheet(event.currentTarget)}>
+                <PlusIcon data-icon="inline-start" />
+                Adicionar primeiro item
+              </Button>
+            }
           />
         ) : !hasFilterMatches ? (
           <EmptyState
@@ -730,10 +816,8 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
+                onEdit={openEditDialog}
                 onDelete={setDeleteTarget}
-                groupId={groupId}
-                setItems={setItems}
-                trackLocalChange={trackLocalChange}
               />
             ))}
           </ul>
@@ -746,7 +830,7 @@ function ListItemsPanel({
           className="grid gap-3"
           onToggle={(event) => setPurchasedOpen(event.currentTarget.open)}
         >
-          <summary className="text-h3 text-foreground cursor-pointer">
+          <summary className="text-h3 text-foreground flex min-h-11 cursor-pointer items-center">
             Comprados ({purchased.length})
           </summary>
           <ul className="divide-border border-border divide-y rounded-2xl border">
@@ -759,10 +843,8 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
+                onEdit={openEditDialog}
                 onDelete={setDeleteTarget}
-                groupId={groupId}
-                setItems={setItems}
-                trackLocalChange={trackLocalChange}
               />
             ))}
           </ul>
@@ -777,7 +859,7 @@ function ListItemsPanel({
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Remover item</DialogTitle>
             <DialogDescription>
@@ -806,6 +888,43 @@ function ListItemsPanel({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {editTarget ? (
+        <EditItemDialog
+          key={editTarget.id}
+          groupId={groupId}
+          item={editTarget}
+          setItems={setItems}
+          trackLocalChange={trackLocalChange}
+          onClose={closeEditDialog}
+          onRestoreFocus={restoreEditFocus}
+        />
+      ) : null}
+
+      {addOpen ? (
+        <AddItemSheet
+          groupId={groupId}
+          listId={listId}
+          currentUserId={currentUserId}
+          setItems={setItems}
+          trackLocalChange={trackLocalChange}
+          setOpen={setAddOpen}
+          onRestoreFocus={restoreAddFocus}
+        />
+      ) : null}
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-lg justify-end px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+        <Button
+          ref={addFabRef}
+          type="button"
+          size="lg"
+          className="pointer-events-auto shadow-lg"
+          onClick={(event) => openAddSheet(event.currentTarget)}
+        >
+          <PlusIcon data-icon="inline-start" />
+          Adicionar item
+        </Button>
+      </div>
     </div>
   );
 }
