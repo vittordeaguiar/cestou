@@ -57,8 +57,8 @@
 - [x] V-55: cobrir transporte, parsing e falhas do DeepSeek com testes unitários mockados.
 - [x] V-56: criar configuração tipada e builder seguro das fontes iniciais.
 - [x] V-56: documentar fontes habilitadas, experimentais e descartadas.
-- [ ] Executar format, lint, typecheck, testes, build e revisão final do diff.
-- [ ] Criar um commit por issue e registrar o resultado desta entrega.
+- [x] Executar format, lint, typecheck, testes, build e revisão final do diff.
+- [x] Criar um commit por issue e registrar o resultado desta entrega.
 
 ## Decisões
 
@@ -69,4 +69,14 @@
 
 ## Review
 
-- Pendente até a conclusão da implementação e das verificações.
+- V-54: cliente Firecrawl server-only implementado sobre a API REST v2, com busca, scraping, timeout, respostas normalizadas e erros seguros; nenhum SDK ou dependência foi adicionado.
+- V-55: cliente DeepSeek server-only implementado sobre `/chat/completions`, com modelos V4 permitidos, JSON mode, thinking desabilitado, decoder runtime e rejeição explícita de respostas vazias, inválidas ou truncadas.
+- As configurações são lidas de forma lazy e centralizada. O build passou sem `FIRECRAWL_API_KEY` ou `DEEPSEEK_API_KEY` disponíveis no ambiente da tarefa.
+- V-56: Angeloni, Super Muffato, Zona Sul e Drogaria Venancio ficaram habilitados; Drogasil e Araujo ficaram experimentais e desabilitados.
+- Carrefour, Pão de Açúcar, Savegnago, Pague Menos/Extrafarma e Panvel foram documentados como descartados por termos ou regras de robots incompatíveis com o fluxo previsto.
+- Foram adicionados 28 testes de integrações/fontes; a suíte completa passou com 24 arquivos e 132 testes.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram. O primeiro build falhou apenas porque o sandbox bloqueou o download das fontes Geist; a repetição com rede permitida passou.
+- Não houve migration, alteração de `price_estimates`, RLS, Server Action, rota pública, UI, convite ou implementação antecipada de V-57 a V-63.
+- A validação real dos provedores continua manual por falta de credenciais; os comandos pequenos estão em `docs/fontes-de-precos.md`.
+- A base está pronta para iniciar V-57 a V-60, mantendo scraping específico, localização e prompt final fora deste bloco.
+- `handoff.md` permaneceu não rastreado e inalterado.
