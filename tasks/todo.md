@@ -45,3 +45,28 @@
 - Smoke em navegador alcançou o login local em Chrome e navegador interno; a lista exige sessão autenticada inexistente, então a inspeção visual mobile/desktop permanece manual. O fluxo mobile está coberto em jsdom a 390 × 844.
 - PR draft #14 aberto contra `main` a partir de `codex/sprint-2-lista-core`.
 - `handoff.md` permaneceu não rastreado e inalterado.
+
+# Sprint 3 — Setup da estimativa de gasto
+
+## Plano
+
+- [x] Atualizar `main` por fast-forward e criar `codex/sprint-3-estimation-setup`, preservando `handoff.md`.
+- [x] V-54: implementar cliente Firecrawl server-only, contratos mínimos e erros seguros.
+- [x] V-54: cobrir transporte e falhas do Firecrawl com testes unitários mockados.
+- [ ] V-55: implementar cliente DeepSeek server-only para JSON estruturado.
+- [ ] V-55: cobrir transporte, parsing e falhas do DeepSeek com testes unitários mockados.
+- [ ] V-56: criar configuração tipada e builder seguro das fontes iniciais.
+- [ ] V-56: documentar fontes habilitadas, experimentais e descartadas.
+- [ ] Executar format, lint, typecheck, testes, build e revisão final do diff.
+- [ ] Criar um commit por issue e registrar o resultado desta entrega.
+
+## Decisões
+
+- Usar wrappers HTTP pequenos e tipados para as duas APIs, sem novas dependências.
+- Ler credenciais de modo lazy e centralizado para manter build e testes sem chaves reais.
+- Manter toda integração server-only e não expor Actions, rotas ou UI incompletas.
+- Não alterar `price_estimates`, migrations ou RLS neste bloco.
+
+## Review
+
+- Pendente até a conclusão da implementação e das verificações.
