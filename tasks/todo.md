@@ -53,8 +53,8 @@
 - [x] Atualizar `main` por fast-forward e criar `codex/sprint-3-estimation-setup`, preservando `handoff.md`.
 - [x] V-54: implementar cliente Firecrawl server-only, contratos mínimos e erros seguros.
 - [x] V-54: cobrir transporte e falhas do Firecrawl com testes unitários mockados.
-- [ ] V-55: implementar cliente DeepSeek server-only para JSON estruturado.
-- [ ] V-55: cobrir transporte, parsing e falhas do DeepSeek com testes unitários mockados.
+- [x] V-55: implementar cliente DeepSeek server-only para JSON estruturado.
+- [x] V-55: cobrir transporte, parsing e falhas do DeepSeek com testes unitários mockados.
 - [ ] V-56: criar configuração tipada e builder seguro das fontes iniciais.
 - [ ] V-56: documentar fontes habilitadas, experimentais e descartadas.
 - [ ] Executar format, lint, typecheck, testes, build e revisão final do diff.
