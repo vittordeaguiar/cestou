@@ -23,7 +23,7 @@
 - [x] Manter no diálogo a linha canônica mais recente sem desmontá-lo sob filtro ativo.
 - [x] Garantir que o rollback preserve os dados remotos e adicionar a regressão aos testes.
 - [x] Executar a validação completa, revisar o diff e registrar o resultado.
-- [ ] Publicar o PR.
+- [x] Publicar o PR.
 
 ## Review
 
@@ -36,4 +36,5 @@
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (102 testes), `npm run build` e `git diff --check` passaram.
 - `npm run db:test` alcançou a tentativa de conexão fora do sandbox, mas o Postgres/Supabase local não estava ativo.
 - Smoke em navegador alcançou o login local em Chrome e navegador interno; a lista exige sessão autenticada inexistente, então a inspeção visual mobile/desktop permanece manual. O fluxo mobile está coberto em jsdom a 390 × 844.
+- PR draft #14 aberto contra `main` a partir de `codex/sprint-2-lista-core`.
 - `handoff.md` permaneceu não rastreado e inalterado.
