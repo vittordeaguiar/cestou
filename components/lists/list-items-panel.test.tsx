@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,7 @@ const {
   deleteListItemAction,
   updateListItemAction,
   setListItemPurchasedAction,
+  useListItemsRealtime,
   toastSuccess,
   toastError,
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   deleteListItemAction: vi.fn(),
   updateListItemAction: vi.fn(),
   setListItemPurchasedAction: vi.fn(),
+  useListItemsRealtime: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
@@ -27,7 +29,7 @@ vi.mock("@/app/app/groups/list-items-actions", () => ({
   setListItemPurchasedAction,
 }));
 vi.mock("@/lib/lists/use-list-items-realtime", () => ({
-  useListItemsRealtime: vi.fn(),
+  useListItemsRealtime,
   fetchListItemsSnapshot: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("@/lib/toast", () => ({
@@ -63,6 +65,7 @@ describe("ListItemsPanel", () => {
     deleteListItemAction.mockReset();
     updateListItemAction.mockReset();
     setListItemPurchasedAction.mockReset();
+    useListItemsRealtime.mockReset();
     toastSuccess.mockReset();
     toastError.mockReset();
     vi.stubGlobal("crypto", {
@@ -75,6 +78,7 @@ describe("ListItemsPanel", () => {
     const user = userEvent.setup();
     render(<ListItemsPanel {...baseProps} items={[]} />);
 
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
     await user.clear(screen.getByLabelText("Quantidade"));
     await user.type(screen.getByLabelText("Quantidade"), "0");
     await user.click(screen.getByRole("button", { name: "Adicionar item" }));
@@ -94,6 +98,7 @@ describe("ListItemsPanel", () => {
 
     render(<ListItemsPanel {...baseProps} items={[]} />);
 
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
     await user.type(screen.getByLabelText("Nome"), "Arroz");
     await user.clear(screen.getByLabelText("Quantidade"));
     await user.type(screen.getByLabelText("Quantidade"), "2");
@@ -103,6 +108,7 @@ describe("ListItemsPanel", () => {
     expect(screen.getByText("Arroz")).not.toBeNull();
     expect(screen.getByText("2 kg")).not.toBeNull();
     expect(screen.getByText("Adicionado por Ana")).not.toBeNull();
+    expect(screen.queryByText("Sua lista está pronta para começar")).toBeNull();
 
     await waitFor(() => {
       expect(createListItemAction).toHaveBeenCalled();
@@ -215,9 +221,17 @@ describe("ListItemsPanel", () => {
       unit: null,
       quantity: 1,
     };
+    const uncategorizedItem = {
+      ...arroz,
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "Papel-toalha",
+    };
 
     render(
-      <ListItemsPanel {...baseProps} items={[{ ...arroz, category: "mercado" }, farmaciaItem]} />,
+      <ListItemsPanel
+        {...baseProps}
+        items={[{ ...arroz, category: "mercado" }, farmaciaItem, uncategorizedItem]}
+      />,
     );
 
     expect(screen.getByText("Arroz").closest("li")?.textContent).toContain("Mercado");
@@ -230,6 +244,73 @@ describe("ListItemsPanel", () => {
     await user.click(screen.getByRole("button", { name: "Farmácia" }));
     expect(screen.getByText("Dipirona")).not.toBeNull();
     expect(screen.queryByText("Arroz")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Sem categoria" }));
+    expect(screen.getByText("Papel-toalha")).not.toBeNull();
+    expect(screen.queryByText("Dipirona")).toBeNull();
+  });
+
+  it("keeps edit feedback mounted and rolls back a category change under an active filter", async () => {
+    const user = userEvent.setup();
+    let resolveUpdate!: (result: {
+      status: "error";
+      fieldErrors: Record<string, string>;
+      message: string;
+    }) => void;
+    updateListItemAction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    render(<ListItemsPanel {...baseProps} items={[{ ...arroz, category: "mercado" }]} />);
+
+    await user.click(screen.getByRole("button", { name: "Mercado" }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText("Categoria"), "farmacia");
+    await user.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(updateListItemAction).toHaveBeenCalled());
+    expect(screen.queryByText("Arroz")).toBeNull();
+    expect(screen.getByRole("dialog")).not.toBeNull();
+
+    resolveUpdate({
+      status: "error",
+      fieldErrors: {},
+      message: "Não foi possível atualizar o item. Tente novamente.",
+    });
+
+    await waitFor(() => expect(screen.getByText("Arroz")).not.toBeNull());
+    expect(screen.getByRole("dialog").textContent).toContain(
+      "Não foi possível atualizar o item. Tente novamente.",
+    );
+    expect(toastError).toHaveBeenCalledWith({
+      title: "Não foi possível atualizar o item. Tente novamente.",
+    });
+  });
+
+  it("finishes a category change under an active filter after the server confirms it", async () => {
+    const user = userEvent.setup();
+    updateListItemAction.mockResolvedValue({
+      status: "success",
+      fieldErrors: {},
+      message: "Item atualizado.",
+    });
+
+    render(<ListItemsPanel {...baseProps} items={[{ ...arroz, category: "mercado" }]} />);
+
+    await user.click(screen.getByRole("button", { name: "Mercado" }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText("Categoria"), "farmacia");
+    await user.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText("Arroz")).toBeNull();
+    expect(screen.getByText("Nenhum item nesta categoria")).not.toBeNull();
+    expect(toastSuccess).toHaveBeenCalledWith({ title: "Item atualizado." });
   });
 
   it("includes selected category when adding an item", async () => {
@@ -242,6 +323,7 @@ describe("ListItemsPanel", () => {
 
     render(<ListItemsPanel {...baseProps} items={[]} />);
 
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
     await user.type(screen.getByLabelText("Nome"), "Sabonete");
     await user.selectOptions(screen.getByLabelText("Categoria"), "farmacia");
     await user.click(screen.getByRole("button", { name: "Adicionar item" }));
@@ -251,5 +333,56 @@ describe("ListItemsPanel", () => {
     await waitFor(() => {
       expect(createListItemAction).toHaveBeenCalled();
     });
+  });
+
+  it("opens the add sheet from the empty state on a mobile viewport", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+
+    render(<ListItemsPanel {...baseProps} items={[]} />);
+
+    expect(screen.getByText("Sua lista está pronta para começar")).not.toBeNull();
+    expect(screen.getByText(/solicitar uma estimativa de gasto/i)).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Adicionar item" }).dataset.size).toBe("lg");
+
+    await user.click(screen.getByRole("button", { name: "Adicionar primeiro item" }));
+
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).getByRole("heading", { name: "Adicionar item" })).not.toBeNull();
+    expect(within(sheet).getByLabelText("Quantidade").getAttribute("inputmode")).toBe("decimal");
+    expect(within(sheet).getByRole("button", { name: "Adicionar item" })).not.toBeNull();
+  });
+
+  it("replaces the empty state when the first categorized item arrives through Realtime", () => {
+    let realtimeOptions:
+      | {
+          onChange: (updater: (items: Array<typeof arroz>) => Array<typeof arroz>) => void;
+        }
+      | undefined;
+    useListItemsRealtime.mockImplementation((options) => {
+      realtimeOptions = options;
+    });
+
+    render(<ListItemsPanel {...baseProps} items={[]} />);
+    expect(screen.getByText("Sua lista está pronta para começar")).not.toBeNull();
+
+    act(() => {
+      realtimeOptions?.onChange(() => [{ ...arroz, category: "farmacia" }]);
+    });
+
+    expect(screen.queryByText("Sua lista está pronta para começar")).toBeNull();
+    expect(screen.getByText("Arroz").closest("li")?.textContent).toContain("Farmácia");
+  });
+
+  it("keeps purchase, edit, and remove actions available on a mobile viewport", () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 844 });
+
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
+
+    expect(screen.getByRole("checkbox", { name: "Marcar Arroz como comprado" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Editar" }).dataset.size).toBe("sm");
+    expect(screen.getByRole("button", { name: "Remover" }).dataset.size).toBe("sm");
   });
 });

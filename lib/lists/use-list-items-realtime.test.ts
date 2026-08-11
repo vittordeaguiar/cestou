@@ -75,6 +75,7 @@ describe("useListItemsRealtime", () => {
         name: "Arroz",
         quantity: 1,
         unit: null,
+        category: "farmacia",
         created_by: "user-1",
         created_at: "2026-08-08T12:00:00.000Z",
       },
@@ -83,7 +84,7 @@ describe("useListItemsRealtime", () => {
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const updater = onChange.mock.calls[0]?.[0] as (items: unknown[]) => unknown[];
-    expect(updater([])).toHaveLength(1);
+    expect(updater([])).toEqual([expect.objectContaining({ name: "Arroz", category: "farmacia" })]);
     expect(onRemoteChange).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111");
   });
 });

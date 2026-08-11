@@ -91,6 +91,7 @@ describe("list item sync helpers", () => {
         name: "Arroz integral",
         quantity: 3,
         unit: "kg",
+        category: "outro",
         purchased: true,
         created_by: baseItem.createdBy,
         created_at: baseItem.createdAt,
@@ -98,6 +99,7 @@ describe("list item sync helpers", () => {
       old: { id: baseItem.id },
     });
     expect(updated[0]?.name).toBe("Arroz integral");
+    expect(updated[0]?.category).toBe("outro");
     expect(updated[0]?.purchased).toBe(true);
 
     const deleted = applyListItemChange(updated, {
