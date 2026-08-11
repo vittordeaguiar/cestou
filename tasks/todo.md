@@ -25,6 +25,12 @@
 - [x] Executar a validação completa, revisar o diff e registrar o resultado.
 - [x] Publicar o PR.
 
+## Comentários do PR #14
+
+- [x] Reproduzir a perda de foco ao fechar os diálogos de edição e criação sem trigger Radix.
+- [x] Restaurar o foco ao acionador original, com fallback acessível quando ele sair do DOM.
+- [x] Executar validações, revisar o diff e publicar os commits de correção.
+
 ## Review
 
 - V-51: o diálogo de edição agora é único e fica acima das listas filtradas; sucesso fecha o diálogo e falha restaura o snapshot completo com feedback visível.
@@ -32,8 +38,9 @@
 - Linhas foram memorizadas, callbacks de compra/edição estabilizados e partição/filtro usam memoização; não foi adicionada virtualização, swipe ou dependência.
 - V-53: estado vazio ganhou onboarding e CTA para o mesmo sheet; criação otimista e primeiro INSERT Realtime removem o onboarding.
 - Correção pós-review: o diálogo guarda somente o ID selecionado e deriva a linha de `items`, então uma falha restaura a versão Realtime mais recente em vez do objeto capturado ao abrir.
+- Review do PR #14: edição e criação restauram foco ao acionador; quando uma mutação remove esse nó, o foco vai para o FAB ou para o título da seção.
 - Nenhuma migration, enum, policy de RLS, convite ou implementação de estimativa foi adicionada.
-- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (102 testes), `npm run build` e `git diff --check` passaram.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (104 testes), `npm run build` e `git diff --check` passaram.
 - `npm run db:test` alcançou a tentativa de conexão fora do sandbox, mas o Postgres/Supabase local não estava ativo.
 - Smoke em navegador alcançou o login local em Chrome e navegador interno; a lista exige sessão autenticada inexistente, então a inspeção visual mobile/desktop permanece manual. O fluxo mobile está coberto em jsdom a 390 × 844.
 - PR draft #14 aberto contra `main` a partir de `codex/sprint-2-lista-core`.

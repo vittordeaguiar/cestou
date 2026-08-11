@@ -174,6 +174,7 @@ function AddItemSheet({
   setItems,
   trackLocalChange,
   setOpen,
+  onRestoreFocus,
 }: {
   groupId: string;
   listId: string;
@@ -181,6 +182,7 @@ function AddItemSheet({
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
   trackLocalChange: (itemId: string) => void;
   setOpen: Dispatch<SetStateAction<boolean>>;
+  onRestoreFocus: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const itemIdInputRef = useRef<HTMLInputElement>(null);
@@ -258,7 +260,13 @@ function AddItemSheet({
         setOpen(nextOpen);
       }}
     >
-      <SheetContent className="mx-auto w-full max-w-lg border-x">
+      <SheetContent
+        className="mx-auto w-full max-w-lg border-x"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onRestoreFocus();
+        }}
+      >
         <SheetHeader>
           <SheetTitle>Adicionar item</SheetTitle>
           <SheetDescription>Informe o item, a quantidade e os detalhes opcionais.</SheetDescription>
@@ -299,12 +307,14 @@ function EditItemDialog({
   setItems,
   trackLocalChange,
   onClose,
+  onRestoreFocus,
 }: {
   groupId: string;
   item: ListItemRow;
   setItems: Dispatch<SetStateAction<ListItemRow[]>>;
   trackLocalChange: (itemId: string) => void;
   onClose: () => void;
+  onRestoreFocus: () => void;
 }) {
   const snapshotRef = useRef<ListItemRow | null>(null);
   const [state, formAction, pending] = useActionState(
@@ -375,7 +385,13 @@ function EditItemDialog({
         }
       }}
     >
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+      <DialogContent
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onRestoreFocus();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Editar item</DialogTitle>
           <DialogDescription>
@@ -431,7 +447,7 @@ const ListItemRowView = memo(function ListItemRowView({
   toggling: boolean;
   deleting: boolean;
   onTogglePurchased: (item: ListItemRow, purchased: boolean) => void;
-  onEdit: (itemId: string) => void;
+  onEdit: (itemId: string, trigger: HTMLButtonElement) => void;
   onDelete: (item: ListItemRow) => void;
 }) {
   const addedBy = formatAddedByLabel(item.createdBy, memberNamesByUserId);
@@ -480,7 +496,12 @@ const ListItemRowView = memo(function ListItemRowView({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 pl-8 sm:pl-0">
-        <Button type="button" variant="outline" size="sm" onClick={() => onEdit(item.id)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={(event) => onEdit(item.id, event.currentTarget)}
+        >
           <PencilIcon data-icon="inline-start" />
           Editar
         </Button>
@@ -521,6 +542,10 @@ function ListItemsPanel({
   const localChangeTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const localChangeIdsRef = useRef<Set<string>>(new Set());
   const togglingIdsRef = useRef<Set<string>>(new Set());
+  const itemsHeadingRef = useRef<HTMLHeadingElement>(null);
+  const addTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const addFabRef = useRef<HTMLButtonElement>(null);
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null);
   const serverSnapshot = useMemo(() => serializeListItemsSnapshot(serverItems), [serverItems]);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
   const editTarget = useMemo(
@@ -632,6 +657,26 @@ function ListItemsPanel({
   );
 
   const closeEditDialog = useCallback(() => setEditTargetId(null), []);
+  const openEditDialog = useCallback((itemId: string, trigger: HTMLButtonElement) => {
+    editTriggerRef.current = trigger;
+    setEditTargetId(itemId);
+  }, []);
+  const openAddSheet = useCallback((trigger: HTMLButtonElement) => {
+    addTriggerRef.current = trigger;
+    setAddOpen(true);
+  }, []);
+  const restoreEditFocus = useCallback(() => {
+    const target = editTriggerRef.current?.isConnected
+      ? editTriggerRef.current
+      : itemsHeadingRef.current;
+    target?.focus();
+  }, []);
+  const restoreAddFocus = useCallback(() => {
+    const target = addTriggerRef.current?.isConnected
+      ? addTriggerRef.current
+      : (addFabRef.current ?? itemsHeadingRef.current);
+    target?.focus();
+  }, []);
 
   function confirmDelete() {
     if (!deleteTarget || deletingId) {
@@ -705,7 +750,12 @@ function ListItemsPanel({
     <div className="grid gap-8 pb-24">
       <section className="grid gap-3" aria-labelledby="items-heading">
         <div className="space-y-1">
-          <h2 id="items-heading" className="text-h3 text-foreground">
+          <h2
+            ref={itemsHeadingRef}
+            id="items-heading"
+            tabIndex={-1}
+            className="text-h3 text-foreground"
+          >
             Itens
           </h2>
           <p className="text-small text-muted-foreground">
@@ -739,7 +789,7 @@ function ListItemsPanel({
             title="Sua lista está pronta para começar"
             description="Adicione os primeiros itens agora. Quando a lista estiver pronta, você poderá solicitar uma estimativa de gasto."
             action={
-              <Button type="button" onClick={() => setAddOpen(true)}>
+              <Button type="button" onClick={(event) => openAddSheet(event.currentTarget)}>
                 <PlusIcon data-icon="inline-start" />
                 Adicionar primeiro item
               </Button>
@@ -766,7 +816,7 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
-                onEdit={setEditTargetId}
+                onEdit={openEditDialog}
                 onDelete={setDeleteTarget}
               />
             ))}
@@ -793,7 +843,7 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
-                onEdit={setEditTargetId}
+                onEdit={openEditDialog}
                 onDelete={setDeleteTarget}
               />
             ))}
@@ -847,6 +897,7 @@ function ListItemsPanel({
           setItems={setItems}
           trackLocalChange={trackLocalChange}
           onClose={closeEditDialog}
+          onRestoreFocus={restoreEditFocus}
         />
       ) : null}
 
@@ -858,15 +909,17 @@ function ListItemsPanel({
           setItems={setItems}
           trackLocalChange={trackLocalChange}
           setOpen={setAddOpen}
+          onRestoreFocus={restoreAddFocus}
         />
       ) : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-lg justify-end px-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
         <Button
+          ref={addFabRef}
           type="button"
           size="lg"
           className="pointer-events-auto shadow-lg"
-          onClick={() => setAddOpen(true)}
+          onClick={(event) => openAddSheet(event.currentTarget)}
         >
           <PlusIcon data-icon="inline-start" />
           Adicionar item

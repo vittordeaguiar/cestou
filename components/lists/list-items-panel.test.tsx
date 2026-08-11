@@ -113,6 +113,8 @@ describe("ListItemsPanel", () => {
     await waitFor(() => {
       expect(createListItemAction).toHaveBeenCalled();
     });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Adicionar item" }));
   });
 
   it("opens edit and delete dialogs for existing items", async () => {
@@ -130,6 +132,18 @@ describe("ListItemsPanel", () => {
     expect(screen.getByRole("heading", { name: "Remover item" })).not.toBeNull();
     expect(updateListItemAction).not.toHaveBeenCalled();
     expect(deleteListItemAction).not.toHaveBeenCalled();
+  });
+
+  it("returns focus to the Edit button after closing the dialog", async () => {
+    const user = userEvent.setup();
+    render(<ListItemsPanel {...baseProps} items={[arroz]} />);
+
+    const editButton = screen.getByRole("button", { name: "Editar" });
+    await user.click(editButton);
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(editButton);
   });
 
   it("shows purchased items in the Comprados section on load", () => {
@@ -364,6 +378,7 @@ describe("ListItemsPanel", () => {
     expect(screen.queryByText("Arroz")).toBeNull();
     expect(screen.getByText("Nenhum item nesta categoria")).not.toBeNull();
     expect(toastSuccess).toHaveBeenCalledWith({ title: "Item atualizado." });
+    expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Itens" }));
   });
 
   it("includes selected category when adding an item", async () => {
@@ -405,6 +420,19 @@ describe("ListItemsPanel", () => {
     expect(within(sheet).getByRole("heading", { name: "Adicionar item" })).not.toBeNull();
     expect(within(sheet).getByLabelText("Quantidade").getAttribute("inputmode")).toBe("decimal");
     expect(within(sheet).getByRole("button", { name: "Adicionar item" })).not.toBeNull();
+  });
+
+  it("returns focus to the add action after closing the sheet", async () => {
+    const user = userEvent.setup();
+    render(<ListItemsPanel {...baseProps} items={[]} />);
+
+    const emptyStateAction = screen.getByRole("button", { name: "Adicionar primeiro item" });
+    await user.click(emptyStateAction);
+    const sheet = screen.getByRole("dialog");
+    await user.click(within(sheet).getByRole("button", { name: "Fechar" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(emptyStateAction);
   });
 
   it("replaces the empty state when the first categorized item arrives through Realtime", () => {
