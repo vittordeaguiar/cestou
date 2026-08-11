@@ -6,3 +6,4 @@
 - Em policies que consultam a própria tabela, use helpers `SECURITY DEFINER` de escopo mínimo para evitar recursão de RLS; cada helper precisa de `search_path` explícito e privilégios de execução revisados.
 - Não torne uma variável nova obrigatória no helper compartilhado de clientes se o proxy existente a chama em toda requisição. Valide configurações específicas no helper próprio, para manter rotas públicas e renovação de sessão compatíveis com ambientes já configurados.
 - Componentes responsáveis por confirmar ou reverter uma mutação otimista não podem viver dentro da projeção filtrada que a própria mutação altera; mantenha diálogo, snapshot e feedback em um ancestral estável até a resposta final.
+- Ao elevar um diálogo acima de uma coleção sincronizada, mantenha no estado apenas a identidade do alvo e derive a linha atual da fonte canônica; guardar o objeto inteiro congela dados anteriores a eventos Realtime e torna o rollback obsoleto.

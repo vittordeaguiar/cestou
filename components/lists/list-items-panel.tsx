@@ -431,7 +431,7 @@ const ListItemRowView = memo(function ListItemRowView({
   toggling: boolean;
   deleting: boolean;
   onTogglePurchased: (item: ListItemRow, purchased: boolean) => void;
-  onEdit: (item: ListItemRow) => void;
+  onEdit: (itemId: string) => void;
   onDelete: (item: ListItemRow) => void;
 }) {
   const addedBy = formatAddedByLabel(item.createdBy, memberNamesByUserId);
@@ -480,7 +480,7 @@ const ListItemRowView = memo(function ListItemRowView({
         </div>
       </div>
       <div className="flex flex-wrap gap-2 pl-8 sm:pl-0">
-        <Button type="button" variant="outline" size="sm" onClick={() => onEdit(item)}>
+        <Button type="button" variant="outline" size="sm" onClick={() => onEdit(item.id)}>
           <PencilIcon data-icon="inline-start" />
           Editar
         </Button>
@@ -509,7 +509,7 @@ function ListItemsPanel({
   const [items, setItems] = useState(serverItems);
   const [addOpen, setAddOpen] = useState(false);
   const [highlightedIds, setHighlightedIds] = useState<Set<string>>(() => new Set());
-  const [editTarget, setEditTarget] = useState<ListItemRow | null>(null);
+  const [editTargetId, setEditTargetId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ListItemRow | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingIds, setTogglingIds] = useState<Set<string>>(() => new Set());
@@ -523,6 +523,10 @@ function ListItemsPanel({
   const togglingIdsRef = useRef<Set<string>>(new Set());
   const serverSnapshot = useMemo(() => serializeListItemsSnapshot(serverItems), [serverItems]);
   const lastSyncedSnapshotRef = useRef(serverSnapshot);
+  const editTarget = useMemo(
+    () => items.find((item) => item.id === editTargetId) ?? null,
+    [editTargetId, items],
+  );
   const { pending, purchased } = useMemo(() => {
     const partitioned = partitionListItems(items);
     return {
@@ -627,7 +631,7 @@ function ListItemsPanel({
     [groupId, startPurchaseTransition, trackLocalChange],
   );
 
-  const closeEditDialog = useCallback(() => setEditTarget(null), []);
+  const closeEditDialog = useCallback(() => setEditTargetId(null), []);
 
   function confirmDelete() {
     if (!deleteTarget || deletingId) {
@@ -762,7 +766,7 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
-                onEdit={setEditTarget}
+                onEdit={setEditTargetId}
                 onDelete={setDeleteTarget}
               />
             ))}
@@ -789,7 +793,7 @@ function ListItemsPanel({
                 toggling={togglingIds.has(item.id)}
                 deleting={deletingId === item.id}
                 onTogglePurchased={togglePurchased}
-                onEdit={setEditTarget}
+                onEdit={setEditTargetId}
                 onDelete={setDeleteTarget}
               />
             ))}

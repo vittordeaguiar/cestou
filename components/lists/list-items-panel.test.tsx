@@ -291,6 +291,59 @@ describe("ListItemsPanel", () => {
     });
   });
 
+  it("rolls back to the latest Realtime row when an edit fails", async () => {
+    const user = userEvent.setup();
+    let realtimeOptions:
+      | {
+          onChange: (updater: (items: Array<typeof arroz>) => Array<typeof arroz>) => void;
+        }
+      | undefined;
+    let resolveUpdate!: (result: {
+      status: "error";
+      fieldErrors: Record<string, string>;
+      message: string;
+    }) => void;
+    useListItemsRealtime.mockImplementation((options) => {
+      realtimeOptions = options;
+    });
+    updateListItemAction.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveUpdate = resolve;
+        }),
+    );
+
+    render(<ListItemsPanel {...baseProps} items={[{ ...arroz, category: "mercado" }]} />);
+
+    await user.click(screen.getByRole("button", { name: "Mercado" }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    act(() => {
+      realtimeOptions?.onChange((items) =>
+        items.map((item) =>
+          item.id === arroz.id ? { ...item, name: "Arroz integral", quantity: 3 } : item,
+        ),
+      );
+    });
+
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText("Categoria"), "farmacia");
+    await user.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(updateListItemAction).toHaveBeenCalled());
+    expect(screen.queryByText("Arroz integral")).toBeNull();
+
+    resolveUpdate({
+      status: "error",
+      fieldErrors: {},
+      message: "Não foi possível atualizar o item. Tente novamente.",
+    });
+
+    await waitFor(() => expect(screen.getByText("Arroz integral")).not.toBeNull());
+    expect(screen.getByText("Arroz integral").closest("li")?.textContent).toContain("3 kg");
+    expect(screen.getByRole("dialog")).not.toBeNull();
+  });
+
   it("finishes a category change under an active filter after the server confirms it", async () => {
     const user = userEvent.setup();
     updateListItemAction.mockResolvedValue({
