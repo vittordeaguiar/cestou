@@ -55,8 +55,8 @@
 - [x] V-54: cobrir transporte e falhas do Firecrawl com testes unitários mockados.
 - [x] V-55: implementar cliente DeepSeek server-only para JSON estruturado.
 - [x] V-55: cobrir transporte, parsing e falhas do DeepSeek com testes unitários mockados.
-- [ ] V-56: criar configuração tipada e builder seguro das fontes iniciais.
-- [ ] V-56: documentar fontes habilitadas, experimentais e descartadas.
+- [x] V-56: criar configuração tipada e builder seguro das fontes iniciais.
+- [x] V-56: documentar fontes habilitadas, experimentais e descartadas.
 - [ ] Executar format, lint, typecheck, testes, build e revisão final do diff.
 - [ ] Criar um commit por issue e registrar o resultado desta entrega.
 
