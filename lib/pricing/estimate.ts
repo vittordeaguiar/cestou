@@ -6,15 +6,13 @@ import {
   type StructuredJsonResponse,
 } from "@/lib/integrations/deepseek";
 import {
-  firecrawlClient,
-  type FirecrawlSearchInput,
-  type FirecrawlSearchResponse,
-} from "@/lib/integrations/firecrawl";
-import { getEnabledPriceSources } from "@/lib/pricing/sources";
+  sourceCollector,
+  type SourceCollectionResult,
+  type SourceCollectorPort,
+} from "@/lib/pricing/source-collector";
 import type { ItemCategory } from "@/types";
 
-const SEARCH_RESULTS_PER_ITEM = 4;
-const MAX_EVIDENCE_CHARS_PER_RESULT = 2_500;
+const MAX_EVIDENCE_CHARS_PER_SOURCE = 2_500;
 
 export type PendingPriceItem = {
   id: string;
@@ -32,16 +30,12 @@ export type PriceEstimateResult = {
   failedCount: number;
 };
 
-type FirecrawlPort = {
-  search(input: FirecrawlSearchInput): Promise<FirecrawlSearchResponse>;
-};
-
 type DeepSeekPort = {
   requestStructuredJson<T>(request: StructuredJsonRequest<T>): Promise<StructuredJsonResponse<T>>;
 };
 
 type PriceEstimatorDependencies = {
-  firecrawl: FirecrawlPort;
+  sourceCollector: SourceCollectorPort;
   deepSeek: DeepSeekPort;
 };
 
@@ -54,44 +48,29 @@ type ExtractedPrice = {
 type ItemEstimate =
   { kind: "found"; subtotal: number } | { kind: "not_found" } | { kind: "failed" };
 
+type FoundSourceCollectionResult = Extract<SourceCollectionResult, { status: "found" }>;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFoundSourceResult(
+  result: SourceCollectionResult,
+): result is FoundSourceCollectionResult {
+  return result.status === "found";
 }
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function sourceDomainsFor(category: ItemCategory | null) {
-  const sourceCategory = category === "mercado" || category === "farmacia" ? category : undefined;
-  return getEnabledPriceSources(sourceCategory).map((source) => source.domain);
-}
-
-function filterAllowedResults(
-  response: FirecrawlSearchResponse,
-  allowedDomains: readonly string[],
-) {
-  const domains = new Set(allowedDomains);
-  return {
-    ...response,
-    results: response.results.filter((result) => {
-      try {
-        const url = new URL(result.url);
-        return (url.protocol === "https:" || url.protocol === "http:") && domains.has(url.hostname);
-      } catch {
-        return false;
-      }
-    }),
-  };
-}
-
-function formatEvidence(response: FirecrawlSearchResponse) {
-  return response.results.map((result, index) => ({
+function formatEvidence(results: readonly FoundSourceCollectionResult[]) {
+  return results.map((result, index) => ({
     index: index + 1,
-    url: result.url,
-    title: result.title?.slice(0, 300) ?? null,
-    description: result.description?.slice(0, 500) ?? null,
-    content: result.markdown?.slice(0, MAX_EVIDENCE_CHARS_PER_RESULT) ?? null,
+    sourceId: result.sourceId,
+    url: result.sourceUrl,
+    locationStatus: result.locationStatus,
+    content: result.content.slice(0, MAX_EVIDENCE_CHARS_PER_SOURCE),
   }));
 }
 
@@ -128,9 +107,12 @@ function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>):
   };
 }
 
-function buildExtractionRequest(item: PendingPriceItem, response: FirecrawlSearchResponse) {
-  const evidence = formatEvidence(response);
-  const allowedUrls = new Set(response.results.map((result) => result.url));
+function buildExtractionRequest(
+  item: PendingPriceItem,
+  sourceResults: readonly FoundSourceCollectionResult[],
+) {
+  const evidence = formatEvidence(sourceResults);
+  const allowedUrls = new Set(evidence.map((result) => result.url));
 
   return {
     messages: [
@@ -163,21 +145,20 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
     const itemResults = await Promise.all(
       items.map(async (item): Promise<ItemEstimate> => {
         try {
-          const allowedDomains = sourceDomainsFor(item.category);
-          const rawSearchResponse = await dependencies.firecrawl.search({
-            query: item.name,
-            limit: SEARCH_RESULTS_PER_ITEM,
-            includeDomains: allowedDomains,
-            includeContent: true,
+          const collection = await dependencies.sourceCollector.collect({
+            name: item.name,
+            category: item.category,
           });
-          const searchResponse = filterAllowedResults(rawSearchResponse, allowedDomains);
+          const foundSources = collection.filter(isFoundSourceResult);
 
-          if (searchResponse.results.length === 0) {
-            return { kind: "not_found" };
+          if (foundSources.length === 0) {
+            return collection.length > 0 && collection.every((result) => result.status === "failed")
+              ? { kind: "failed" }
+              : { kind: "not_found" };
           }
 
           const extraction = await dependencies.deepSeek.requestStructuredJson(
-            buildExtractionRequest(item, searchResponse),
+            buildExtractionRequest(item, foundSources),
           );
 
           if (!extraction.data.found || extraction.data.unitPrice === null) {
@@ -220,6 +201,6 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
 }
 
 export const estimatePendingItems = createPriceEstimator({
-  firecrawl: firecrawlClient,
+  sourceCollector,
   deepSeek: deepSeekClient,
 });

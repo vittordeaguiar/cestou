@@ -118,3 +118,31 @@ curl --fail-with-body --request POST https://api.deepseek.com/chat/completions \
 
 Ao validar, registrar a data, status HTTP, formato retornado e se o preço observado exige
 CEP/loja. Não armazenar respostas completas, prompts ou headers em logs de produção.
+
+## V-58 — Coleta específica via Scrape
+
+A V-58 usa o endpoint `/v2/scrape` para consultar a URL específica construída para
+cada fonte habilitada. O cliente solicita Markdown com `onlyMainContent` e timeout
+explícito de 30 segundos. O resultado é normalizado no servidor antes de ser enviado
+ao DeepSeek; conteúdo vazio é classificado como `not_found`, enquanto erros do
+provedor permanecem classificados por fonte e não expõem detalhes ao cliente.
+Todas as chamadas de `collect` da mesma instância do coletor compartilham um
+limitador FIFO global de duas raspagens simultâneas; não há timeout adicional para
+a fila.
+
+Nesta execução, a variável `FIRECRAWL_API_KEY` não estava disponível. Portanto, não
+foi feita validação real do provedor; a suíte usa mocks e valida o payload, o contrato
+de resposta, os domínios permitidos, a normalização e a concorrência global limitada.
+
+Para uma validação manual pequena, sem registrar credenciais ou respostas completas:
+
+```bash
+curl --fail-with-body --request POST https://api.firecrawl.dev/v2/scrape \
+  --header "Authorization: Bearer ${FIRECRAWL_API_KEY:?configure FIRECRAWL_API_KEY}" \
+  --header "Content-Type: application/json" \
+  --data '{"url":"https://super.angeloni.com.br/arroz%201kg","formats":["markdown"],"onlyMainContent":true,"timeout":30000}'
+```
+
+Ao executar, registrar somente a data, status HTTP, URL retornada, preço observado e
+se o conteúdo depende de CEP ou loja. Não armazenar payloads completos, prompts ou
+headers de produção.
