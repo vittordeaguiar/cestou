@@ -9,6 +9,7 @@ import {
   sourceCollector,
   type SourceCollectionResult,
   type SourceCollectorPort,
+  type SourceSearchResult,
 } from "@/lib/pricing/source-collector";
 import type { ItemCategory } from "@/types";
 
@@ -48,23 +49,34 @@ type ExtractedPrice = {
 type ItemEstimate =
   { kind: "found"; subtotal: number } | { kind: "not_found" } | { kind: "failed" };
 
+type SourceEvidenceResult = SourceCollectionResult | SourceSearchResult;
 type FoundSourceCollectionResult = Extract<SourceCollectionResult, { status: "found" }>;
+type FoundSourceSearchResult = Extract<SourceSearchResult, { status: "found" }>;
+type FoundSourceResult = FoundSourceCollectionResult | FoundSourceSearchResult;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isFoundSourceResult(
+function isFoundSourceCollectionResult(
   result: SourceCollectionResult,
 ): result is FoundSourceCollectionResult {
   return result.status === "found";
+}
+
+function isFoundSourceSearchResult(result: SourceSearchResult): result is FoundSourceSearchResult {
+  return result.status === "found";
+}
+
+function isFailedSourceResult(result: SourceEvidenceResult) {
+  return result.status === "failed";
 }
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function formatEvidence(results: readonly FoundSourceCollectionResult[]) {
+function formatEvidence(results: readonly FoundSourceResult[]) {
   return results.map((result, index) => ({
     index: index + 1,
     sourceId: result.sourceId,
@@ -109,7 +121,7 @@ function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>):
 
 function buildExtractionRequest(
   item: PendingPriceItem,
-  sourceResults: readonly FoundSourceCollectionResult[],
+  sourceResults: readonly FoundSourceResult[],
 ) {
   const evidence = formatEvidence(sourceResults);
   const allowedUrls = new Set(evidence.map((result) => result.url));
@@ -149,10 +161,20 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
             name: item.name,
             category: item.category,
           });
-          const foundSources = collection.filter(isFoundSourceResult);
+          let allSources: SourceEvidenceResult[] = collection;
+          let foundSources: FoundSourceResult[] = collection.filter(isFoundSourceCollectionResult);
 
           if (foundSources.length === 0) {
-            return collection.length > 0 && collection.every((result) => result.status === "failed")
+            const genericSearchResults = await dependencies.sourceCollector.search({
+              name: item.name,
+              category: item.category,
+            });
+            allSources = [...collection, ...genericSearchResults];
+            foundSources = genericSearchResults.filter(isFoundSourceSearchResult);
+          }
+
+          if (foundSources.length === 0) {
+            return allSources.length > 0 && allSources.every(isFailedSourceResult)
               ? { kind: "failed" }
               : { kind: "not_found" };
           }

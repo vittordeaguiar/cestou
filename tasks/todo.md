@@ -177,3 +177,34 @@
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram.
 - `npm run db:test` não conectou ao PostgreSQL local (`LegacyDbConnectError`); nenhuma migration foi criada.
 - O PR #18 e a descrição da V-58 no Linear foram atualizados; `handoff.md` permanece não rastreado e fora do commit.
+
+# V-59 — Busca genérica do Firecrawl
+
+## Plano
+
+- [x] Atualizar `main` e criar `task/v-59-firecrawl-generic-search`, preservando `handoff.md`.
+- [x] Estender o coletor server-only com Search como fallback após ausência de evidência específica.
+- [x] Filtrar resultados genéricos por relevância, preço em R$, URL segura e duplicidade.
+- [x] Compartilhar o limitador FIFO do Firecrawl entre scraping e Search.
+- [x] Integrar evidências genéricas ao estimador sem alterar a Server Action ou o prompt definitivo.
+- [x] Cobrir transporte, filtragem, fallback, falhas, concorrência e não uso prematuro do Search.
+- [x] Atualizar a documentação da estratégia de fontes e registrar o resultado.
+- [x] Executar format, lint, typecheck, testes, build e revisão final do diff.
+- [x] Criar commit local e atualizar a V-59 para `Testing` após as validações.
+
+## Decisões
+
+- O Search usa a query `${item} preço`, limite 5, conteúdo Markdown e configuração BR do cliente Firecrawl.
+- A busca genérica só roda quando a coleta específica não tiver nenhum resultado `found`.
+- Um resultado precisa ter URL HTTP(S) segura, termo relevante do item e preço brasileiro claro com `R$`.
+- Resultados genéricos usam contrato próprio com `sourceId` `firecrawl-search`; evidências seguem o formato atual do DeepSeek.
+- Não haverá migration, dependência nova, UI, alteração da Action, retry ou mudança do prompt da V-60.
+
+## Review
+
+- O coletor adiciona `search(item)` com a query `${item} preço`, conteúdo Markdown, limite 5 e configuração BR; a busca compartilha a fila FIFO global de duas chamadas com o Scrape.
+- Resultados são normalizados e filtrados por tokens do item, preço brasileiro com `R$`, URL HTTP(S) sem credenciais e URL única. Conteúdo irrelevante ou sem preço vira `not_found`; falhas tipadas não vazam detalhes internos.
+- O estimador chama Search somente quando a coleta específica não possui `found`, envia as evidências genéricas ao mesmo contrato do DeepSeek e não faz fallback adicional após uma evidência específica sem preço.
+- Foram adicionados testes de payload Firecrawl, normalização, filtragem, duplicidade, URLs inseguras, falhas, fallback, concorrência global e não uso prematuro; a suíte passou com 27 arquivos e 177 testes.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram.
+- Nenhuma migration, alteração de RLS, Server Action, UI, dependência ou chamada real ao Firecrawl foi adicionada. `handoff.md` permanece não rastreado e fora do commit.

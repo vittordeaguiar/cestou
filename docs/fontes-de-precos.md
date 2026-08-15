@@ -146,3 +146,24 @@ curl --fail-with-body --request POST https://api.firecrawl.dev/v2/scrape \
 Ao executar, registrar somente a data, status HTTP, URL retornada, preço observado e
 se o conteúdo depende de CEP ou loja. Não armazenar payloads completos, prompts ou
 headers de produção.
+
+## V-59 — Busca genérica como fallback
+
+Quando nenhuma fonte específica retornar evidência encontrada, o coletor executa, para
+cada item, uma única busca genérica no endpoint Search do Firecrawl com a query `{item} preço`, limite
+de cinco resultados, conteúdo Markdown e país `BR`. A busca genérica não substitui o
+Scrape das fontes configuradas e não é chamada quando a coleta específica já produziu
+evidência.
+
+Antes do DeepSeek, cada resultado é normalizado pelo mesmo pipeline do Scrape. São
+aceitos somente resultados com URL HTTP(S) sem credenciais, ao menos um termo relevante
+do item e um preço brasileiro claro no formato `R$`. URLs duplicadas, conteúdo sem preço
+ou resultados irrelevantes são descartados. As evidências aceitas recebem o identificador
+`firecrawl-search` e permanecem com localização `unresolved`, pois a lista ainda não
+fornece CEP ou loja.
+
+Scrape e Search compartilham o limitador FIFO global de duas chamadas Firecrawl por
+instância do coletor. Falhas do provedor continuam tipadas internamente e não expõem
+mensagens, payloads ou credenciais ao usuário. A validação automatizada usa mocks; a
+validação real depende de `FIRECRAWL_API_KEY` e deve registrar somente status, URL e
+preço observado.

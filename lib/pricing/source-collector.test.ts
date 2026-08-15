@@ -22,6 +22,17 @@ function scrapeResponse(url: string, markdown = "Produto\nR$ 10,00") {
   };
 }
 
+function searchResponse(
+  results: Array<{
+    url: string;
+    title?: string;
+    description?: string;
+    markdown?: string;
+  }>,
+) {
+  return { results };
+}
+
 describe("normalizePriceSourceMarkdown", () => {
   it("normaliza espaços, quebras, vazios e duplicatas consecutivas", () => {
     expect(
@@ -44,7 +55,9 @@ describe("normalizePriceSourceMarkdown", () => {
 describe("createPriceSourceCollector", () => {
   it("seleciona fontes habilitadas, monta URLs codificadas e preserva a prioridade", async () => {
     const scrape = vi.fn(async (url: string) => scrapeResponse(url));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect(MARKET_ITEM);
 
@@ -69,7 +82,9 @@ describe("createPriceSourceCollector", () => {
 
   it("não inclui fontes desabilitadas e usa todas as habilitadas sem categoria", async () => {
     const scrape = vi.fn(async (url: string) => scrapeResponse(url));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     await collector.collect({ name: "dipirona", category: "farmacia" });
     expect(scrape).toHaveBeenCalledTimes(1);
@@ -100,7 +115,9 @@ describe("createPriceSourceCollector", () => {
       active -= 1;
       return scrapeResponse(url);
     });
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect(MARKET_ITEM);
 
@@ -125,7 +142,7 @@ describe("createPriceSourceCollector", () => {
       });
     });
     const collector = createPriceSourceCollector({
-      firecrawl: { scrape },
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
       maxConcurrentScrapes: 1,
     });
     const expectedUrls = [
@@ -161,9 +178,170 @@ describe("createPriceSourceCollector", () => {
     ]);
   });
 
+  it("usa a busca genérica com query, conteúdo e evidência normalizada", async () => {
+    const scrape = vi.fn(async (url: string) => scrapeResponse(url));
+    const search = vi.fn().mockResolvedValue(
+      searchResponse([
+        {
+          url: "https://catalogo.example/arroz",
+          markdown: "Arroz\nR$ 12,90",
+        },
+      ]),
+    );
+    const collector = createPriceSourceCollector({ firecrawl: { scrape, search } });
+
+    await expect(collector.search({ name: "Arroz", category: "mercado" })).resolves.toEqual([
+      {
+        status: "found",
+        sourceId: "firecrawl-search",
+        searchQuery: "Arroz preço",
+        sourceUrl: "https://catalogo.example/arroz",
+        content: "Arroz\nR$ 12,90",
+        locationStatus: "unresolved",
+      },
+    ]);
+    expect(search).toHaveBeenCalledWith({
+      query: "Arroz preço",
+      limit: 5,
+      includeContent: true,
+    });
+  });
+
+  it("descarta resultados irrelevantes, sem preço, inseguros e duplicados", async () => {
+    const scrape = vi.fn(async (url: string) => scrapeResponse(url));
+    const search = vi.fn().mockResolvedValue(
+      searchResponse([
+        {
+          url: "https://catalogo.example/arroz",
+          title: "Arroz",
+          markdown: "Arroz\nR$ 12,90",
+        },
+        {
+          url: "https://catalogo.example/arroz",
+          title: "Arroz duplicado",
+          markdown: "Arroz\nR$ 12,90",
+        },
+        {
+          url: "https://catalogo.example/feijao",
+          title: "Feijão",
+          markdown: "Feijão\nR$ 9,90",
+        },
+        {
+          url: "https://catalogo.example/arroz-promocao",
+          title: "Feijão",
+          markdown: "Feijão\nR$ 9,90",
+        },
+        {
+          url: "https://catalogo.example/arroz-sem-preco",
+          title: "Arroz",
+          markdown: "Arroz em promoção",
+        },
+        {
+          url: "ftp://catalogo.example/arroz",
+          title: "Arroz",
+          markdown: "Arroz\nR$ 12,90",
+        },
+      ]),
+    );
+    const collector = createPriceSourceCollector({ firecrawl: { scrape, search } });
+
+    const results = await collector.search({ name: "arroz", category: "mercado" });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      status: "found",
+      sourceUrl: "https://catalogo.example/arroz",
+    });
+  });
+
+  it("classifica a busca sem resultados válidos como não encontrada", async () => {
+    const scrape = vi.fn(async (url: string) => scrapeResponse(url));
+    const search = vi.fn().mockResolvedValue(
+      searchResponse([
+        {
+          url: "https://catalogo.example/feijao",
+          title: "Feijão",
+          markdown: "Feijão\nR$ 9,90",
+        },
+      ]),
+    );
+    const collector = createPriceSourceCollector({ firecrawl: { scrape, search } });
+
+    await expect(collector.search({ name: "arroz", category: "mercado" })).resolves.toEqual([
+      {
+        status: "not_found",
+        sourceId: "firecrawl-search",
+        searchQuery: "arroz preço",
+        locationStatus: "unresolved",
+      },
+    ]);
+  });
+
+  it("preserva falha tipada da busca sem expor detalhes internos", async () => {
+    const scrape = vi.fn(async (url: string) => scrapeResponse(url));
+    const search = vi.fn().mockRejectedValue(
+      new IntegrationError({
+        code: "rate_limit_error",
+        provider: "firecrawl",
+        message: "limite para segredo-interno",
+        retryable: true,
+      }),
+    );
+    const collector = createPriceSourceCollector({ firecrawl: { scrape, search } });
+
+    const results = await collector.search({ name: "arroz", category: "mercado" });
+
+    expect(results[0]).toMatchObject({
+      status: "failed",
+      sourceId: "firecrawl-search",
+      errorCode: "rate_limit_error",
+      retryable: true,
+    });
+    expect(JSON.stringify(results)).not.toContain("segredo-interno");
+  });
+
+  it("compartilha o limite FIFO entre scrape e busca genérica", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const track = async <T>(task: () => Promise<T>) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        return await task();
+      } finally {
+        active -= 1;
+      }
+    };
+    const scrape = vi.fn((url: string) =>
+      track(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return scrapeResponse(url);
+      }),
+    );
+    const search = vi.fn(() =>
+      track(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return searchResponse([]);
+      }),
+    );
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search },
+      maxConcurrentScrapes: 1,
+    });
+
+    await Promise.all([
+      collector.collect({ name: "dipirona", category: "farmacia" }),
+      collector.search({ name: "arroz", category: "mercado" }),
+    ]);
+
+    expect(maxActive).toBe(1);
+  });
+
   it("classifica conteúdo vazio como não encontrado sem chamar outro provedor", async () => {
     const scrape = vi.fn(async (url: string) => scrapeResponse(url, "\n \r\n"));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "dipirona", category: "farmacia" });
 
@@ -179,7 +357,9 @@ describe("createPriceSourceCollector", () => {
 
   it("rejeita URL retornada fora do domínio da fonte", async () => {
     const scrape = vi.fn(async () => scrapeResponse("https://example.com/dipirona"));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "dipirona", category: "farmacia" });
 
@@ -195,7 +375,9 @@ describe("createPriceSourceCollector", () => {
     const scrape = vi.fn(async (url: string) =>
       scrapeResponse(url === "https://super.angeloni.com.br/arroz" ? returnedUrl : url),
     );
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "arroz", category: "mercado" });
 
@@ -212,7 +394,9 @@ describe("createPriceSourceCollector", () => {
     "https://sub.super.angeloni.com.br/arroz",
   ])("rejeita URL retornada insegura: %s", async (returnedUrl) => {
     const scrape = vi.fn(async () => scrapeResponse(returnedUrl));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "arroz", category: "mercado" });
 
@@ -237,7 +421,9 @@ describe("createPriceSourceCollector", () => {
       )
       .mockResolvedValueOnce(scrapeResponse("https://www.supermuffato.com.br/arroz"))
       .mockResolvedValueOnce(scrapeResponse("https://www.zonasul.com.br/arroz"));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "arroz", category: "mercado" });
 
@@ -288,7 +474,7 @@ describe("createPriceSourceCollector", () => {
         .mockImplementationOnce(firstResult)
         .mockResolvedValueOnce(scrapeResponse("https://www.drogariavenancio.com.br/dipirona"));
       const collector = createPriceSourceCollector({
-        firecrawl: { scrape },
+        firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
         maxConcurrentScrapes: 1,
       });
 
@@ -303,7 +489,9 @@ describe("createPriceSourceCollector", () => {
 
   it("classifica falhas inesperadas como erro técnico seguro", async () => {
     const scrape = vi.fn().mockRejectedValue(new Error("segredo do provedor"));
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape, search: vi.fn().mockResolvedValue(searchResponse([])) },
+    });
 
     const results = await collector.collect({ name: "dipirona", category: "farmacia" });
 

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { createPriceEstimator, type PendingPriceItem } from "@/lib/pricing/estimate";
-import type { SourceCollectionResult } from "@/lib/pricing/source-collector";
+import type { SourceCollectionResult, SourceSearchResult } from "@/lib/pricing/source-collector";
 
 const ITEMS: PendingPriceItem[] = [
   {
@@ -56,6 +56,17 @@ function failedSource(sourceId: string, searchUrl: string) {
     retryable: true,
     locationStatus: "unresolved" as const,
   } satisfies SourceCollectionResult;
+}
+
+function foundSearchSource(sourceUrl: string, content = "Arroz\nR$ 10,00") {
+  return {
+    status: "found" as const,
+    sourceId: "firecrawl-search" as const,
+    searchQuery: "Arroz preço",
+    sourceUrl,
+    content,
+    locationStatus: "unresolved" as const,
+  } satisfies SourceSearchResult;
 }
 
 describe("createPriceEstimator", () => {
@@ -132,7 +143,7 @@ describe("createPriceEstimator", () => {
       ]);
     const requestStructuredJson = vi.fn();
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
       deepSeek: { requestStructuredJson },
     });
 
@@ -146,6 +157,75 @@ describe("createPriceEstimator", () => {
     expect(requestStructuredJson).not.toHaveBeenCalled();
   });
 
+  it("usa a busca genérica somente depois de não encontrar evidência específica", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        notFoundSource("angeloni", "https://super.angeloni.com.br/arroz"),
+        notFoundSource("super-muffato", "https://www.supermuffato.com.br/arroz"),
+      ]);
+    const search = vi
+      .fn()
+      .mockResolvedValue([foundSearchSource("https://catalogo.example/arroz", "Arroz\nR$ 11,50")]);
+    const requestStructuredJson = vi.fn().mockResolvedValue({
+      data: {
+        found: true,
+        unitPrice: 11.5,
+        sourceUrl: "https://catalogo.example/arroz",
+      },
+    });
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search },
+      deepSeek: { requestStructuredJson },
+    });
+
+    await expect(estimate([ITEMS[0]!])).resolves.toEqual({
+      status: "complete",
+      totalAmount: 23,
+      itemsNotFound: [],
+      processedCount: 1,
+      failedCount: 0,
+    });
+    expect(search).toHaveBeenCalledWith({ name: "Arroz", category: "mercado" });
+    expect(
+      JSON.parse(String(requestStructuredJson.mock.calls[0]?.[0].messages[1]?.content)),
+    ).toEqual(
+      expect.objectContaining({
+        evidence: [
+          expect.objectContaining({
+            sourceId: "firecrawl-search",
+            url: "https://catalogo.example/arroz",
+            content: "Arroz\nR$ 11,50",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("não usa a busca genérica quando a evidência específica não gera preço", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz sem preço"),
+      ]);
+    const search = vi
+      .fn()
+      .mockResolvedValue([foundSearchSource("https://catalogo.example/arroz", "Arroz\nR$ 11,50")]);
+    const requestStructuredJson = vi.fn().mockResolvedValue({
+      data: { found: false, unitPrice: null, sourceUrl: null },
+    });
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search },
+      deepSeek: { requestStructuredJson },
+    });
+
+    await expect(estimate([ITEMS[0]!])).resolves.toMatchObject({
+      status: "partial",
+      itemsNotFound: ["Arroz"],
+    });
+    expect(search).not.toHaveBeenCalled();
+  });
+
   it("não encaminha ao DeepSeek uma coleta sem fontes encontradas", async () => {
     const collect = vi
       .fn()
@@ -153,9 +233,10 @@ describe("createPriceEstimator", () => {
         failedSource("angeloni", "https://super.angeloni.com.br/arroz"),
         notFoundSource("super-muffato", "https://www.supermuffato.com.br/arroz"),
       ]);
+    const search = vi.fn().mockResolvedValue([]);
     const requestStructuredJson = vi.fn();
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search },
       deepSeek: { requestStructuredJson },
     });
 
@@ -166,6 +247,7 @@ describe("createPriceEstimator", () => {
       failedCount: 0,
     });
     expect(requestStructuredJson).not.toHaveBeenCalled();
+    expect(search).toHaveBeenCalledWith({ name: "Arroz", category: "mercado" });
   });
 
   it("envia somente evidências encontradas em uma coleta parcialmente bem-sucedida", async () => {
@@ -190,7 +272,7 @@ describe("createPriceEstimator", () => {
       },
     });
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
       deepSeek: { requestStructuredJson },
     });
 
@@ -231,7 +313,7 @@ describe("createPriceEstimator", () => {
       },
     });
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
       deepSeek: { requestStructuredJson },
     });
 
@@ -251,7 +333,7 @@ describe("createPriceEstimator", () => {
         failedSource("source", `https://example.com/${item.name.toLowerCase()}`),
       ]);
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
       deepSeek: { requestStructuredJson: vi.fn() },
     });
 
@@ -275,7 +357,7 @@ describe("createPriceEstimator", () => {
       model: "deepseek-v4-flash",
     }));
     const estimate = createPriceEstimator({
-      sourceCollector: { collect },
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
       deepSeek: { requestStructuredJson },
     });
 
