@@ -84,6 +84,10 @@ describe("createPriceSourceCollector", () => {
         "https://www.araujo.com.br/busca?q=arroz",
       ]),
     );
+
+    scrape.mockClear();
+    await collector.collect({ name: "arroz", category: "outro" });
+    expect(scrape).toHaveBeenCalledTimes(4);
   });
 
   it("limita a duas raspagens concorrentes e devolve resultados na ordem de prioridade", async () => {
@@ -108,6 +112,34 @@ describe("createPriceSourceCollector", () => {
     ]);
   });
 
+  it("compartilha o limite global quando coletas de itens diferentes começam juntas", async () => {
+    let active = 0;
+    let maxActive = 0;
+    const scrape = vi.fn(async (url: string) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return scrapeResponse(url);
+    });
+    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+
+    const results = await Promise.all([
+      collector.collect({ name: "arroz", category: "mercado" }),
+      collector.collect({ name: "feijão", category: "mercado" }),
+    ]);
+
+    expect(maxActive).toBe(2);
+    expect(scrape).toHaveBeenCalledTimes(6);
+    expect(
+      results.every((itemResults) => itemResults.every(({ status }) => status === "found")),
+    ).toBe(true);
+    expect(results.map((itemResults) => itemResults.map(({ sourceId }) => sourceId))).toEqual([
+      ["angeloni", "super-muffato", "zona-sul"],
+      ["angeloni", "super-muffato", "zona-sul"],
+    ]);
+  });
+
   it("classifica conteúdo vazio como não encontrado sem chamar outro provedor", async () => {
     const scrape = vi.fn(async (url: string) => scrapeResponse(url, "\n \r\n"));
     const collector = createPriceSourceCollector({ firecrawl: { scrape } });
@@ -129,6 +161,39 @@ describe("createPriceSourceCollector", () => {
     const collector = createPriceSourceCollector({ firecrawl: { scrape } });
 
     const results = await collector.collect({ name: "dipirona", category: "farmacia" });
+
+    expect(results[0]).toMatchObject({
+      status: "failed",
+      errorCode: "invalid_response_error",
+      retryable: false,
+    });
+  });
+
+  it("preserva a URL retornada quando ela é válida no domínio da fonte", async () => {
+    const returnedUrl = "https://super.angeloni.com.br/produtos/arroz";
+    const scrape = vi.fn(async (url: string) =>
+      scrapeResponse(url === "https://super.angeloni.com.br/arroz" ? returnedUrl : url),
+    );
+    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+
+    const results = await collector.collect({ name: "arroz", category: "mercado" });
+
+    expect(results[0]).toMatchObject({
+      status: "found",
+      searchUrl: "https://super.angeloni.com.br/arroz",
+      sourceUrl: returnedUrl,
+    });
+  });
+
+  it.each([
+    "ftp://super.angeloni.com.br/arroz",
+    "https://user:password@super.angeloni.com.br/arroz",
+    "https://sub.super.angeloni.com.br/arroz",
+  ])("rejeita URL retornada insegura: %s", async (returnedUrl) => {
+    const scrape = vi.fn(async () => scrapeResponse(returnedUrl));
+    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+
+    const results = await collector.collect({ name: "arroz", category: "mercado" });
 
     expect(results[0]).toMatchObject({
       status: "failed",
@@ -162,6 +227,45 @@ describe("createPriceSourceCollector", () => {
       retryable: true,
     });
     expect(results.slice(1).every((result) => result.status === "found")).toBe(true);
+  });
+
+  it.each([
+    {
+      label: "falha tipada",
+      firstResult: () =>
+        Promise.reject(
+          new IntegrationError({
+            code: "timeout_error",
+            provider: "firecrawl",
+            message: "tempo esgotado",
+            retryable: true,
+          }),
+        ),
+    },
+    {
+      label: "erro inesperado",
+      firstResult: () => Promise.reject(new Error("segredo do provedor")),
+    },
+    {
+      label: "URL inválida",
+      firstResult: () => Promise.resolve(scrapeResponse("https://example.com/dipirona")),
+    },
+  ])("libera o permit depois de $label e executa a coleta seguinte", async ({ firstResult }) => {
+    const scrape = vi
+      .fn()
+      .mockImplementationOnce(firstResult)
+      .mockResolvedValueOnce(scrapeResponse("https://www.drogariavenancio.com.br/dipirona"));
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape },
+      maxConcurrentScrapes: 1,
+    });
+
+    const firstCollection = collector.collect({ name: "dipirona", category: "farmacia" });
+    const secondCollection = collector.collect({ name: "dipirona", category: "farmacia" });
+
+    await expect(firstCollection).resolves.toMatchObject([{ status: "failed" }]);
+    await expect(secondCollection).resolves.toMatchObject([{ status: "found" }]);
+    expect(scrape).toHaveBeenCalledTimes(2);
   });
 
   it("classifica falhas inesperadas como erro técnico seguro", async () => {

@@ -126,10 +126,13 @@ cada fonte habilitada. O cliente solicita Markdown com `onlyMainContent` e timeo
 explícito de 30 segundos. O resultado é normalizado no servidor antes de ser enviado
 ao DeepSeek; conteúdo vazio é classificado como `not_found`, enquanto erros do
 provedor permanecem classificados por fonte e não expõem detalhes ao cliente.
+Todas as chamadas de `collect` da mesma instância do coletor compartilham um
+limitador FIFO global de duas raspagens simultâneas; não há timeout adicional para
+a fila.
 
 Nesta execução, a variável `FIRECRAWL_API_KEY` não estava disponível. Portanto, não
 foi feita validação real do provedor; a suíte usa mocks e valida o payload, o contrato
-de resposta, os domínios permitidos, a normalização e a concorrência limitada.
+de resposta, os domínios permitidos, a normalização e a concorrência global limitada.
 
 Para uma validação manual pequena, sem registrar credenciais ou respostas completas:
 

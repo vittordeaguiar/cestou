@@ -22,11 +22,16 @@ const ITEMS: PendingPriceItem[] = [
   },
 ];
 
-function foundSource(sourceId: string, sourceUrl: string, content = "Produto R$ 10,00") {
+function foundSource(
+  sourceId: string,
+  sourceUrl: string,
+  content = "Produto R$ 10,00",
+  searchUrl = sourceUrl,
+) {
   return {
     status: "found" as const,
     sourceId,
-    searchUrl: sourceUrl,
+    searchUrl,
     sourceUrl,
     content,
     locationStatus: "unresolved" as const,
@@ -161,6 +166,52 @@ describe("createPriceEstimator", () => {
       failedCount: 0,
     });
     expect(requestStructuredJson).not.toHaveBeenCalled();
+  });
+
+  it("envia somente evidências encontradas em uma coleta parcialmente bem-sucedida", async () => {
+    const returnedUrl = "https://super.angeloni.com.br/produtos/arroz";
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        foundSource(
+          "angeloni",
+          returnedUrl,
+          "Arroz R$ 10,00",
+          "https://super.angeloni.com.br/arroz",
+        ),
+        notFoundSource("super-muffato", "https://www.supermuffato.com.br/arroz"),
+        failedSource("zona-sul", "https://www.zonasul.com.br/arroz"),
+      ]);
+    const requestStructuredJson = vi.fn().mockResolvedValue({
+      data: {
+        found: true,
+        unitPrice: 10,
+        sourceUrl: returnedUrl,
+      },
+    });
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect },
+      deepSeek: { requestStructuredJson },
+    });
+
+    await expect(estimate([ITEMS[0]!])).resolves.toEqual({
+      status: "complete",
+      totalAmount: 20,
+      itemsNotFound: [],
+      processedCount: 1,
+      failedCount: 0,
+    });
+
+    const request = requestStructuredJson.mock.calls[0]?.[0];
+    expect(JSON.parse(String(request?.messages[1]?.content)).evidence).toEqual([
+      {
+        index: 1,
+        sourceId: "angeloni",
+        url: returnedUrl,
+        locationStatus: "unresolved",
+        content: "Arroz R$ 10,00",
+      },
+    ]);
   });
 
   it("mantém evidências úteis quando somente um item falha tecnicamente", async () => {

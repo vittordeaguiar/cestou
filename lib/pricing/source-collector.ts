@@ -56,6 +56,12 @@ type SourceCollectorOptions = {
   maxConcurrentScrapes?: number;
 };
 
+type PendingTask = {
+  task: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+};
+
 function sourceCategoryFor(category: ItemCategory | null) {
   return category === "mercado" || category === "farmacia" ? category : undefined;
 }
@@ -146,6 +152,37 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+function createFifoLimiter(maxConcurrent: number) {
+  let activeCount = 0;
+  const pendingTasks: PendingTask[] = [];
+
+  function drain() {
+    while (activeCount < maxConcurrent && pendingTasks.length > 0) {
+      const pendingTask = pendingTasks.shift()!;
+      activeCount += 1;
+
+      void pendingTask
+        .task()
+        .then(pendingTask.resolve, pendingTask.reject)
+        .finally(() => {
+          activeCount -= 1;
+          drain();
+        });
+    }
+  }
+
+  return function run<T>(task: () => Promise<T>) {
+    return new Promise<T>((resolve, reject) => {
+      pendingTasks.push({
+        task: async () => task(),
+        resolve: (value) => resolve(value as T),
+        reject,
+      });
+      drain();
+    });
+  };
+}
+
 export function createPriceSourceCollector({
   firecrawl,
   maxConcurrentScrapes = DEFAULT_MAX_CONCURRENT_SCRAPES,
@@ -153,6 +190,8 @@ export function createPriceSourceCollector({
   if (!Number.isInteger(maxConcurrentScrapes) || maxConcurrentScrapes < 1) {
     throw new TypeError("A concorrência do coletor deve ser um inteiro positivo.");
   }
+
+  const runWithScrapePermit = createFifoLimiter(maxConcurrentScrapes);
 
   return {
     async collect(item) {
@@ -170,27 +209,29 @@ export function createPriceSourceCollector({
           : "resolved";
 
         try {
-          const response = await firecrawl.scrape(searchUrl);
-          const sourceUrl = validateReturnedUrl(source, response.url);
-          const content = normalizePriceSourceMarkdown(response.markdown);
+          return await runWithScrapePermit(async () => {
+            const response = await firecrawl.scrape(searchUrl);
+            const sourceUrl = validateReturnedUrl(source, response.url);
+            const content = normalizePriceSourceMarkdown(response.markdown);
 
-          if (!content) {
+            if (!content) {
+              return {
+                status: "not_found" as const,
+                sourceId: source.id,
+                searchUrl,
+                locationStatus,
+              };
+            }
+
             return {
-              status: "not_found" as const,
+              status: "found" as const,
               sourceId: source.id,
               searchUrl,
+              sourceUrl,
+              content,
               locationStatus,
             };
-          }
-
-          return {
-            status: "found" as const,
-            sourceId: source.id,
-            searchUrl,
-            sourceUrl,
-            content,
-            locationStatus,
-          };
+          });
         } catch (error) {
           const { errorCode, retryable } = errorDetails(error);
           return {

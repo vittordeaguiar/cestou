@@ -143,3 +143,19 @@
 - Linear foi atualizado: V-58 está em Code Review; V-57, V-59, V-60 e V-62 receberam descrições alinhadas às fronteiras da entrega.
 - Commit `c615cf8` foi publicado na branch `codex/v-58-firecrawl-source-scraping`; o PR #18 está pronto para revisão contra `main` e V-58 está em Code Review no Linear.
 - O setup V-54–V-56 foi publicado no draft PR #15; a V-57 foi publicada isoladamente no draft PR empilhado #16.
+
+## Correção pós-review V-58 — estabilização da concorrência
+
+- [x] Implementar limitador FIFO global de duas chamadas `scrape` por instância do coletor.
+- [x] Cobrir coletas simultâneas, liberação do permit, categoria `outro`, URLs retornadas e falhas parciais.
+- [x] Atualizar documentação, lições e descrição da V-58 no Linear.
+- [x] Executar validações, revisar o diff e confirmar que `handoff.md` permanece fora do PR.
+- [x] Criar commit adicional, fazer push e atualizar o PR #18 pronto para revisão.
+
+### Resultado
+
+- O coletor agora compartilha uma fila FIFO global por instância, com no máximo duas raspagens simultâneas e liberação garantida em todos os caminhos de resultado.
+- A cobertura passou de 158 para 167 testes; foram adicionadas regressões para coletas concorrentes, ordem, categoria `outro`, URLs retornadas, validação de URL, liberação do permit e sucesso parcial.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram.
+- `npm run db:test` não conectou ao PostgreSQL local (`LegacyDbConnectError`); nenhuma migration foi criada.
+- O PR #18 e a descrição da V-58 no Linear foram atualizados; `handoff.md` permanece não rastreado e fora do commit.
