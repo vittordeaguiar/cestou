@@ -95,6 +95,18 @@ describe("FirecrawlClient", () => {
         headers: expect.objectContaining({ Authorization: `Bearer ${API_KEY}` }),
       }),
     );
+    expect(JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body))).toEqual({
+      query: "arroz",
+      limit: 5,
+      sources: ["web"],
+      includeDomains: ["example.com"],
+      country: "BR",
+      timeout: 30_000,
+      scrapeOptions: {
+        formats: [{ type: "markdown" }],
+        onlyMainContent: true,
+      },
+    });
     expect(fetcher).toHaveBeenNthCalledWith(
       2,
       "https://api.firecrawl.dev/v2/scrape",

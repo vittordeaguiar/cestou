@@ -1,6 +1,11 @@
 import "server-only";
 
-import { firecrawlClient, type FirecrawlScrapeResponse } from "@/lib/integrations/firecrawl";
+import {
+  firecrawlClient,
+  type FirecrawlScrapeResponse,
+  type FirecrawlSearchInput,
+  type FirecrawlSearchResponse,
+} from "@/lib/integrations/firecrawl";
 import { IntegrationError, type IntegrationErrorCode } from "@/lib/integrations/errors";
 import {
   buildPriceSourceSearchUrl,
@@ -10,6 +15,9 @@ import {
 import type { ItemCategory } from "@/types";
 
 const DEFAULT_MAX_CONCURRENT_SCRAPES = 2;
+const GENERIC_SEARCH_SOURCE_ID = "firecrawl-search";
+const GENERIC_SEARCH_LIMIT = 5;
+const BRAZILIAN_PRICE_PATTERN = /R\$\s*(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{2})?(?!\d)/i;
 export const MAX_NORMALIZED_SOURCE_CONTENT_CHARS = 2_500;
 
 export type SourceCollectionItem = {
@@ -47,12 +55,41 @@ export type FirecrawlScrapePort = {
   scrape(url: string): Promise<FirecrawlScrapeResponse>;
 };
 
+export type FirecrawlSearchPort = {
+  search(input: FirecrawlSearchInput): Promise<FirecrawlSearchResponse>;
+};
+
+export type SourceSearchResult =
+  | {
+      status: "found";
+      sourceId: typeof GENERIC_SEARCH_SOURCE_ID;
+      searchQuery: string;
+      sourceUrl: string;
+      content: string;
+      locationStatus: "unresolved";
+    }
+  | {
+      status: "not_found";
+      sourceId: typeof GENERIC_SEARCH_SOURCE_ID;
+      searchQuery: string;
+      locationStatus: "unresolved";
+    }
+  | {
+      status: "failed";
+      sourceId: typeof GENERIC_SEARCH_SOURCE_ID;
+      searchQuery: string;
+      errorCode: IntegrationErrorCode;
+      retryable: boolean;
+      locationStatus: "unresolved";
+    };
+
 export type SourceCollectorPort = {
   collect(item: SourceCollectionItem): Promise<SourceCollectionResult[]>;
+  search(item: SourceCollectionItem): Promise<SourceSearchResult[]>;
 };
 
 type SourceCollectorOptions = {
-  firecrawl: FirecrawlScrapePort;
+  firecrawl: FirecrawlScrapePort & FirecrawlSearchPort;
   maxConcurrentScrapes?: number;
 };
 
@@ -74,6 +111,48 @@ function sortSourcesByPriority(sources: readonly PriceSource[]) {
 
 function normalizeLine(line: string) {
   return line.replace(/[ \t]+/g, " ").trim();
+}
+
+function normalizeForMatching(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+function itemTerms(value: string) {
+  return (
+    normalizeForMatching(value)
+      .match(/[\p{L}\p{N}]+/gu)
+      ?.filter((term) => term.length > 1) ?? []
+  );
+}
+
+function hasRelevantItemTerm(itemName: string, value: string) {
+  const terms = itemTerms(itemName);
+  const valueTerms = new Set(normalizeForMatching(value).match(/[\p{L}\p{N}]+/gu) ?? []);
+  return terms.length > 0 && terms.some((term) => valueTerms.has(term));
+}
+
+function validateSearchResultUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return undefined;
+  }
+
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) {
+    return undefined;
+  }
+
+  return url.toString();
+}
+
+function normalizeSearchResultContent(result: FirecrawlSearchResponse["results"][number]) {
+  return normalizePriceSourceMarkdown(
+    [result.title, result.description, result.markdown].filter(Boolean).join("\n"),
+  );
 }
 
 export function normalizePriceSourceMarkdown(
@@ -191,7 +270,7 @@ export function createPriceSourceCollector({
     throw new TypeError("A concorrência do coletor deve ser um inteiro positivo.");
   }
 
-  const runWithScrapePermit = createFifoLimiter(maxConcurrentScrapes);
+  const runWithFirecrawlPermit = createFifoLimiter(maxConcurrentScrapes);
 
   return {
     async collect(item) {
@@ -209,7 +288,7 @@ export function createPriceSourceCollector({
           : "resolved";
 
         try {
-          return await runWithScrapePermit(async () => {
+          return await runWithFirecrawlPermit(async () => {
             const response = await firecrawl.scrape(searchUrl);
             const sourceUrl = validateReturnedUrl(source, response.url);
             const content = normalizePriceSourceMarkdown(response.markdown);
@@ -244,6 +323,73 @@ export function createPriceSourceCollector({
           };
         }
       });
+    },
+
+    async search(item) {
+      const itemName = item.name.trim();
+      if (!itemName) {
+        throw new TypeError("O item da busca não pode ser vazio.");
+      }
+
+      const searchQuery = `${itemName} preço`;
+      const locationStatus = "unresolved" as const;
+
+      try {
+        const response = await runWithFirecrawlPermit(() =>
+          firecrawl.search({
+            query: searchQuery,
+            limit: GENERIC_SEARCH_LIMIT,
+            includeContent: true,
+          }),
+        );
+        const seenUrls = new Set<string>();
+        const results: SourceSearchResult[] = response.results.flatMap((result) => {
+          const sourceUrl = validateSearchResultUrl(result.url);
+          if (!sourceUrl || seenUrls.has(sourceUrl)) return [];
+
+          const content = normalizeSearchResultContent(result);
+          const matchingText = [result.title, result.description, content]
+            .filter(Boolean)
+            .join("\n");
+          if (!content || !hasRelevantItemTerm(itemName, matchingText)) return [];
+          if (!BRAZILIAN_PRICE_PATTERN.test(content)) return [];
+
+          seenUrls.add(sourceUrl);
+          return [
+            {
+              status: "found" as const,
+              sourceId: GENERIC_SEARCH_SOURCE_ID,
+              searchQuery,
+              sourceUrl,
+              content,
+              locationStatus,
+            } satisfies SourceSearchResult,
+          ];
+        });
+
+        return results.length > 0
+          ? results
+          : [
+              {
+                status: "not_found" as const,
+                sourceId: GENERIC_SEARCH_SOURCE_ID,
+                searchQuery,
+                locationStatus,
+              },
+            ];
+      } catch (error) {
+        const { errorCode, retryable } = errorDetails(error);
+        return [
+          {
+            status: "failed" as const,
+            sourceId: GENERIC_SEARCH_SOURCE_ID,
+            searchQuery,
+            errorCode,
+            retryable,
+            locationStatus,
+          },
+        ];
+      }
     },
   };
 }
