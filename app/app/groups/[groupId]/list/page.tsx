@@ -17,6 +17,8 @@ type GroupListPageProps = {
   params: Promise<{ groupId: string }>;
 };
 
+export const maxDuration = 120;
+
 export async function generateMetadata({ params }: GroupListPageProps) {
   const { groupId } = await params;
   const supabase = await createClient();

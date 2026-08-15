@@ -45,6 +45,13 @@ npm run dev
 - Unidade opcional: coluna `unit` (texto livre, máx. 20).
 - Tag opcional `category` (`mercado` | `farmacia` | `outro`) no item, com seletor ao adicionar/editar, badge na linha e filtro visual client-side (não separa listas).
 
+## Estimativa de gasto (V-54 a V-57)
+
+- O backend usa Firecrawl e DeepSeek por clientes `server-only`; configure `FIRECRAWL_API_KEY` e `DEEPSEEK_API_KEY` para executar a estimativa real.
+- A Server Action da V-57 relê os itens pendentes a partir da sessão, impede execuções concorrentes por lista e persiste o resultado atual em `price_estimates`.
+- `SUPABASE_SERVICE_ROLE_KEY` é obrigatória para essa Action e fica restrita ao servidor. O cliente autenticado não recebe permissão para chamar os RPCs privilegiados de estimativa.
+- A interface para iniciar e exibir a estimativa pertence à V-63 e ainda não está exposta.
+
 ## Scripts
 
 | Comando          | Descrição                   |
