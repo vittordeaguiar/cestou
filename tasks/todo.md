@@ -80,3 +80,36 @@
 - A validação real dos provedores continua manual por falta de credenciais; os comandos pequenos estão em `docs/fontes-de-precos.md`.
 - A base está pronta para iniciar V-57 a V-60, mantendo scraping específico, localização e prompt final fora deste bloco.
 - `handoff.md` permaneceu não rastreado e inalterado.
+
+# V-57 — Server Action de estimativa sob demanda
+
+## Plano
+
+- [x] Criar a branch da V-57 sobre o setup V-54–V-56 e manter `handoff.md` intacto.
+- [x] Definir contratos serializáveis da Action e da orquestração, sem expor dados brutos dos provedores.
+- [x] Implementar autenticação/autorização e reler os itens pendentes da lista no servidor.
+- [x] Adicionar lock atômico por lista e persistência segura em `price_estimates` via funções do banco.
+- [x] Orquestrar Firecrawl e DeepSeek com uma extração mínima, mantendo V-58, V-59 e V-60 extensíveis.
+- [x] Cobrir sucesso, erro parcial, falha total, ausência de itens, acesso indevido e concorrência com testes.
+- [x] Executar format, lint, typecheck, testes, build, testes de banco quando disponíveis e revisar o diff.
+- [ ] Registrar resultados, criar commit, publicar as branches necessárias e abrir o PR da V-57.
+
+## Decisões
+
+- A Action recebe somente `groupId`; identidade, lista e itens são derivados da sessão e do banco.
+- `loading` será representado pelo estado pendente de React quando a UI da V-63 consumir a Action; o retorno cobre estados finais.
+- O lock será persistente no Postgres, não em memória, para funcionar em múltiplas instâncias do servidor.
+- Esta entrega não adiciona botão, card de estimativa, seletores frágeis nem fallback genérico.
+
+## Review
+
+- A Action recebe apenas um `groupId` validado, autentica a sessão, confirma o vínculo e relê os itens pendentes da lista via RLS; conteúdo e ownership nunca vêm do client.
+- A orquestração consulta em paralelo somente os domínios habilitados para a categoria, limita a evidência enviada ao DeepSeek e aceita apenas preço positivo associado a uma URL realmente retornada e aprovada.
+- Resultados completos e parciais são persistidos; falha total preserva a estimativa anterior e retorna mensagem segura. O estado `loading` continuará sendo o pending do React quando a V-63 adicionar a UI.
+- A migration `20260814214500_add_price_estimate_lock.sql` adiciona lock distribuído de três minutos e RPCs atômicos de adquirir, finalizar e liberar. Somente `service_role` pode executá-los; `authenticated` continua sem escrita direta.
+- Foram adicionados 16 testes unitários e 13 asserções pgTAP para autenticação, concorrência, sucesso, parcial, falhas, domínios e privilégios.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (26 arquivos, 148 testes), `npm run build` e `git diff --check` passaram.
+- Todas as migrations foram aplicadas em PostgreSQL 17 temporário; o smoke confirmou lock inicial `true`, concorrente `false`, persistência `42.50` e remoção do lock.
+- `npm run db:test` não conectou porque o Supabase/Docker local não está ativo; a suíte pgTAP nova permanece para execução no ambiente completo.
+- O primeiro build da rodada final falhou porque o sandbox não alcançou o Google Fonts; a repetição com rede permitida passou.
+- Nenhuma UI, scraping por seletores, fallback genérico, retentativa ou convite foi adicionado. `handoff.md` permanece não rastreado e inalterado.
