@@ -112,28 +112,49 @@ describe("createPriceSourceCollector", () => {
     ]);
   });
 
-  it("compartilha o limite global quando coletas de itens diferentes começam juntas", async () => {
-    let active = 0;
-    let maxActive = 0;
-    const scrape = vi.fn(async (url: string) => {
-      active += 1;
-      maxActive = Math.max(maxActive, active);
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      active -= 1;
-      return scrapeResponse(url);
+  it("compartilha o limite global e executa as raspagens em FIFO entre coletas simultâneas", async () => {
+    const startedUrls: string[] = [];
+    const pendingScrapes: Array<{
+      resolve: (response: ReturnType<typeof scrapeResponse>) => void;
+      url: string;
+    }> = [];
+    const scrape = vi.fn((url: string): Promise<ReturnType<typeof scrapeResponse>> => {
+      startedUrls.push(url);
+      return new Promise((resolve) => {
+        pendingScrapes.push({ resolve, url });
+      });
     });
-    const collector = createPriceSourceCollector({ firecrawl: { scrape } });
+    const collector = createPriceSourceCollector({
+      firecrawl: { scrape },
+      maxConcurrentScrapes: 1,
+    });
+    const expectedUrls = [
+      "https://super.angeloni.com.br/arroz",
+      "https://super.angeloni.com.br/feijao",
+      "https://www.supermuffato.com.br/arroz",
+      "https://www.supermuffato.com.br/feijao",
+      "https://www.zonasul.com.br/arroz",
+      "https://www.zonasul.com.br/feijao",
+    ];
 
-    const results = await Promise.all([
-      collector.collect({ name: "arroz", category: "mercado" }),
-      collector.collect({ name: "feijão", category: "mercado" }),
-    ]);
+    const firstCollection = collector.collect({ name: "arroz", category: "mercado" });
+    const secondCollection = collector.collect({ name: "feijao", category: "mercado" });
 
-    expect(maxActive).toBe(2);
+    for (const [index, expectedUrl] of expectedUrls.entries()) {
+      await vi.waitFor(() => expect(pendingScrapes).toHaveLength(1));
+      const pendingScrape = pendingScrapes.shift()!;
+      expect(pendingScrape.url).toBe(expectedUrl);
+      pendingScrape.resolve(scrapeResponse(expectedUrl));
+
+      if (index < expectedUrls.length - 1) {
+        await vi.waitFor(() => expect(startedUrls).toHaveLength(index + 2));
+      }
+    }
+
+    const results = await Promise.all([firstCollection, secondCollection]);
+
+    expect(startedUrls).toEqual(expectedUrls);
     expect(scrape).toHaveBeenCalledTimes(6);
-    expect(
-      results.every((itemResults) => itemResults.every(({ status }) => status === "found")),
-    ).toBe(true);
     expect(results.map((itemResults) => itemResults.map(({ sourceId }) => sourceId))).toEqual([
       ["angeloni", "super-muffato", "zona-sul"],
       ["angeloni", "super-muffato", "zona-sul"],
@@ -232,6 +253,7 @@ describe("createPriceSourceCollector", () => {
   it.each([
     {
       label: "falha tipada",
+      firstStatus: "failed",
       firstResult: () =>
         Promise.reject(
           new IntegrationError({
@@ -244,29 +266,40 @@ describe("createPriceSourceCollector", () => {
     },
     {
       label: "erro inesperado",
+      firstStatus: "failed",
       firstResult: () => Promise.reject(new Error("segredo do provedor")),
     },
     {
       label: "URL inválida",
+      firstStatus: "failed",
       firstResult: () => Promise.resolve(scrapeResponse("https://example.com/dipirona")),
     },
-  ])("libera o permit depois de $label e executa a coleta seguinte", async ({ firstResult }) => {
-    const scrape = vi
-      .fn()
-      .mockImplementationOnce(firstResult)
-      .mockResolvedValueOnce(scrapeResponse("https://www.drogariavenancio.com.br/dipirona"));
-    const collector = createPriceSourceCollector({
-      firecrawl: { scrape },
-      maxConcurrentScrapes: 1,
-    });
+    {
+      label: "conteúdo vazio",
+      firstStatus: "not_found",
+      firstResult: () =>
+        Promise.resolve(scrapeResponse("https://www.drogariavenancio.com.br/dipirona", "\n \r\n")),
+    },
+  ])(
+    "libera o permit depois de $label e executa a coleta seguinte",
+    async ({ firstResult, firstStatus }) => {
+      const scrape = vi
+        .fn()
+        .mockImplementationOnce(firstResult)
+        .mockResolvedValueOnce(scrapeResponse("https://www.drogariavenancio.com.br/dipirona"));
+      const collector = createPriceSourceCollector({
+        firecrawl: { scrape },
+        maxConcurrentScrapes: 1,
+      });
 
-    const firstCollection = collector.collect({ name: "dipirona", category: "farmacia" });
-    const secondCollection = collector.collect({ name: "dipirona", category: "farmacia" });
+      const firstCollection = collector.collect({ name: "dipirona", category: "farmacia" });
+      const secondCollection = collector.collect({ name: "dipirona", category: "farmacia" });
 
-    await expect(firstCollection).resolves.toMatchObject([{ status: "failed" }]);
-    await expect(secondCollection).resolves.toMatchObject([{ status: "found" }]);
-    expect(scrape).toHaveBeenCalledTimes(2);
-  });
+      await expect(firstCollection).resolves.toMatchObject([{ status: firstStatus }]);
+      await expect(secondCollection).resolves.toMatchObject([{ status: "found" }]);
+      expect(scrape).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("classifica falhas inesperadas como erro técnico seguro", async () => {
     const scrape = vi.fn().mockRejectedValue(new Error("segredo do provedor"));

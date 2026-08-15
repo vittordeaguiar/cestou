@@ -148,6 +148,8 @@
 
 - [x] Implementar limitador FIFO global de duas chamadas `scrape` por instância do coletor.
 - [x] Cobrir coletas simultâneas, liberação do permit, categoria `outro`, URLs retornadas e falhas parciais.
+- [x] Comprovar FIFO real entre duas coletas simultâneas com raspagens controladas.
+- [x] Comprovar liberação do permit após resultado `not_found`.
 - [x] Atualizar documentação, lições e descrição da V-58 no Linear.
 - [x] Executar validações, revisar o diff e confirmar que `handoff.md` permanece fora do PR.
 - [x] Criar commit adicional, fazer push e atualizar o PR #18 pronto para revisão.
@@ -155,7 +157,7 @@
 ### Resultado
 
 - O coletor agora compartilha uma fila FIFO global por instância, com no máximo duas raspagens simultâneas e liberação garantida em todos os caminhos de resultado.
-- A cobertura passou de 158 para 167 testes; foram adicionadas regressões para coletas concorrentes, ordem, categoria `outro`, URLs retornadas, validação de URL, liberação do permit e sucesso parcial.
+- A cobertura passou de 158 para 168 testes; foram adicionadas regressões para FIFO real entre coletas concorrentes, categoria `outro`, URLs retornadas, validação de URL, liberação do permit após sucesso, `not_found` e falhas, além do sucesso parcial.
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram.
 - `npm run db:test` não conectou ao PostgreSQL local (`LegacyDbConnectError`); nenhuma migration foi criada.
 - O PR #18 e a descrição da V-58 no Linear foram atualizados; `handoff.md` permanece não rastreado e fora do commit.
