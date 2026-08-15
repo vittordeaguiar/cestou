@@ -92,7 +92,7 @@
 - [x] Orquestrar Firecrawl e DeepSeek com uma extração mínima, mantendo V-58, V-59 e V-60 extensíveis.
 - [x] Cobrir sucesso, erro parcial, falha total, ausência de itens, acesso indevido e concorrência com testes.
 - [x] Executar format, lint, typecheck, testes, build, testes de banco quando disponíveis e revisar o diff.
-- [ ] Registrar resultados, criar commit, publicar as branches necessárias e abrir o PR da V-57.
+- [x] Registrar resultados, criar commit, publicar as branches necessárias e abrir o PR da V-57.
 
 ## Decisões
 
@@ -113,3 +113,4 @@
 - `npm run db:test` não conectou porque o Supabase/Docker local não está ativo; a suíte pgTAP nova permanece para execução no ambiente completo.
 - O primeiro build da rodada final falhou porque o sandbox não alcançou o Google Fonts; a repetição com rede permitida passou.
 - Nenhuma UI, scraping por seletores, fallback genérico, retentativa ou convite foi adicionado. `handoff.md` permanece não rastreado e inalterado.
+- O setup V-54–V-56 foi publicado no draft PR #15; a V-57 foi publicada isoladamente no draft PR empilhado #16.
