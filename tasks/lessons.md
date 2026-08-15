@@ -8,3 +8,4 @@
 - Componentes responsáveis por confirmar ou reverter uma mutação otimista não podem viver dentro da projeção filtrada que a própria mutação altera; mantenha diálogo, snapshot e feedback em um ancestral estável até a resposta final.
 - Ao elevar um diálogo acima de uma coleção sincronizada, mantenha no estado apenas a identidade do alvo e derive a linha atual da fonte canônica; guardar o objeto inteiro congela dados anteriores a eventos Realtime e torna o rollback obsoleto.
 - Modais controlados sem `Trigger` precisam restaurar foco explicitamente em `onCloseAutoFocus`; preserve o acionador e ofereça um fallback conectado ao DOM quando a mutação puder removê-lo.
+- Em testes de timeout com timers falsos, registre a asserção de rejeição antes de avançar o relógio; anexar o handler depois do abort produz uma rejeição não tratada mesmo quando o teste parece passar.
