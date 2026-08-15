@@ -135,6 +135,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      price_estimate_locks: {
+        Row: {
+          created_at: string;
+          list_id: string;
+          lock_token: string;
+          locked_until: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          list_id: string;
+          lock_token: string;
+          locked_until: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          list_id?: string;
+          lock_token?: string;
+          locked_until?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       price_estimates: {
         Row: {
           calculated_at: string;
@@ -187,6 +211,10 @@ export type Database = {
     };
     Views: Record<never, never>;
     Functions: {
+      acquire_price_estimate_lock: {
+        Args: { lock_token: string; requested_by: string; target_list_id: string };
+        Returns: boolean;
+      };
       accept_group_invite: {
         Args: { target_invite_id: string };
         Returns: string;
@@ -206,6 +234,20 @@ export type Database = {
           target_group_id: string;
         };
         Returns: Database["public"]["Tables"]["group_invites"]["Row"];
+      };
+      finish_price_estimate: {
+        Args: {
+          estimated_total: number;
+          lock_token: string;
+          missing_items: string[];
+          requested_by: string;
+          target_list_id: string;
+        };
+        Returns: Database["public"]["Tables"]["price_estimates"]["Row"];
+      };
+      release_price_estimate_lock: {
+        Args: { lock_token: string; requested_by: string; target_list_id: string };
+        Returns: undefined;
       };
       transfer_group_ownership: {
         Args: { target_group_id: string; target_user_id: string };
