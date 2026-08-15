@@ -124,7 +124,7 @@
 - [x] Refatorar o estimador para consumir somente evidências normalizadas, preservando a Action e a persistência da V-57.
 - [x] Cobrir coletor, Firecrawl e estimador com testes unitários sem chamadas reais.
 - [x] Executar validação completa, documentar eventual smoke manual e revisar o diff.
-- [ ] Atualizar Linear, criar commit, fazer push e abrir PR pronto para revisão contra `main`.
+- [x] Atualizar Linear, criar commit, fazer push e abrir PR pronto para revisão contra `main`.
 
 ## Decisões
 
@@ -140,6 +140,6 @@
 - O estimador preserva `PriceEstimateResult`, quantidade, persistência, lock e Server Action da V-57; somente o seam interno de coleta foi substituído.
 - A suíte passou com 27 arquivos e 158 testes; `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build` e `git diff --check` passaram.
 - `npm run db:test` não conectou ao PostgreSQL local (`LegacyDbConnectError`); nenhuma migration foi criada. `FIRECRAWL_API_KEY` não estava disponível, então a validação real do provedor permanece manual e documentada.
-- Linear foi atualizado: V-58 está em Testing; V-57, V-59, V-60 e V-62 receberam descrições alinhadas às fronteiras da entrega.
-- Pendente: commit, push, PR e mudança final de V-58 para Code Review.
+- Linear foi atualizado: V-58 está em Code Review; V-57, V-59, V-60 e V-62 receberam descrições alinhadas às fronteiras da entrega.
+- Commit `c615cf8` foi publicado na branch `codex/v-58-firecrawl-source-scraping`; o PR #18 está pronto para revisão contra `main` e V-58 está em Code Review no Linear.
 - O setup V-54–V-56 foi publicado no draft PR #15; a V-57 foi publicada isoladamente no draft PR empilhado #16.
