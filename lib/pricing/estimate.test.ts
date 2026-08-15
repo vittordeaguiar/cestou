@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { IntegrationError } from "@/lib/integrations/errors";
 import { createPriceEstimator, type PendingPriceItem } from "@/lib/pricing/estimate";
+import type { SourceCollectionResult } from "@/lib/pricing/source-collector";
 
 const ITEMS: PendingPriceItem[] = [
   {
@@ -22,28 +22,51 @@ const ITEMS: PendingPriceItem[] = [
   },
 ];
 
+function foundSource(sourceId: string, sourceUrl: string, content = "Produto R$ 10,00") {
+  return {
+    status: "found" as const,
+    sourceId,
+    searchUrl: sourceUrl,
+    sourceUrl,
+    content,
+    locationStatus: "unresolved" as const,
+  } satisfies SourceCollectionResult;
+}
+
+function notFoundSource(sourceId: string, searchUrl: string) {
+  return {
+    status: "not_found" as const,
+    sourceId,
+    searchUrl,
+    locationStatus: "unresolved" as const,
+  } satisfies SourceCollectionResult;
+}
+
+function failedSource(sourceId: string, searchUrl: string) {
+  return {
+    status: "failed" as const,
+    sourceId,
+    searchUrl,
+    errorCode: "timeout_error" as const,
+    retryable: true,
+    locationStatus: "unresolved" as const,
+  } satisfies SourceCollectionResult;
+}
+
 describe("createPriceEstimator", () => {
-  it("orquestra busca e estruturação por item e calcula o total preliminar", async () => {
-    const search = vi
+  it("orquestra coleta e estruturação por item e calcula o total preliminar", async () => {
+    const collect = vi
       .fn()
-      .mockResolvedValueOnce({
-        results: [
-          {
-            url: "https://super.angeloni.com.br/arroz",
-            title: "Arroz",
-            markdown: "Arroz R$ 10,00",
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        results: [
-          {
-            url: "https://www.drogariavenancio.com.br/dipirona",
-            title: "Dipirona",
-            markdown: "Dipirona R$ 8,50",
-          },
-        ],
-      });
+      .mockResolvedValueOnce([
+        foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz R$ 10,00"),
+      ])
+      .mockResolvedValueOnce([
+        foundSource(
+          "drogaria-venancio",
+          "https://www.drogariavenancio.com.br/dipirona",
+          "Dipirona R$ 8,50",
+        ),
+      ]);
     const requestStructuredJson = vi
       .fn()
       .mockResolvedValueOnce({
@@ -60,8 +83,10 @@ describe("createPriceEstimator", () => {
           sourceUrl: "https://www.drogariavenancio.com.br/dipirona",
         },
       });
+    const search = vi.fn();
+    const sourceCollector = { collect, search };
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector,
       deepSeek: { requestStructuredJson },
     });
 
@@ -73,29 +98,36 @@ describe("createPriceEstimator", () => {
       failedCount: 0,
     });
 
-    expect(search).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        query: "Arroz",
-        includeDomains: ["super.angeloni.com.br", "www.supermuffato.com.br", "www.zonasul.com.br"],
-        includeContent: true,
-      }),
-    );
-    expect(search).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        query: "Dipirona",
-        includeDomains: ["www.drogariavenancio.com.br"],
-      }),
-    );
+    expect(collect).toHaveBeenNthCalledWith(1, { name: "Arroz", category: "mercado" });
+    expect(collect).toHaveBeenNthCalledWith(2, { name: "Dipirona", category: "farmacia" });
     expect(requestStructuredJson).toHaveBeenCalledTimes(2);
+    expect(search).not.toHaveBeenCalled();
+    expect(
+      JSON.parse(String(requestStructuredJson.mock.calls[0]?.[0].messages[1]?.content)),
+    ).toEqual(
+      expect.objectContaining({
+        evidence: [
+          expect.objectContaining({
+            sourceId: "angeloni",
+            url: "https://super.angeloni.com.br/arroz",
+            content: "Arroz R$ 10,00",
+            locationStatus: "unresolved",
+          }),
+        ],
+      }),
+    );
   });
 
-  it("marca item sem resultado como não encontrado sem chamar o DeepSeek", async () => {
-    const search = vi.fn().mockResolvedValue({ results: [] });
+  it("marca item sem evidência como não encontrado sem chamar o DeepSeek", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        notFoundSource("angeloni", "https://super.angeloni.com.br/arroz"),
+        notFoundSource("super-muffato", "https://www.supermuffato.com.br/arroz"),
+      ]);
     const requestStructuredJson = vi.fn();
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector: { collect },
       deepSeek: { requestStructuredJson },
     });
 
@@ -109,18 +141,16 @@ describe("createPriceEstimator", () => {
     expect(requestStructuredJson).not.toHaveBeenCalled();
   });
 
-  it("descarta resultados fora dos domínios aprovados antes da extração", async () => {
-    const search = vi.fn().mockResolvedValue({
-      results: [
-        {
-          url: "https://example.com/arroz",
-          markdown: "Arroz R$ 1,00",
-        },
-      ],
-    });
+  it("não encaminha ao DeepSeek uma coleta sem fontes encontradas", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        failedSource("angeloni", "https://super.angeloni.com.br/arroz"),
+        notFoundSource("super-muffato", "https://www.supermuffato.com.br/arroz"),
+      ]);
     const requestStructuredJson = vi.fn();
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector: { collect },
       deepSeek: { requestStructuredJson },
     });
 
@@ -128,29 +158,20 @@ describe("createPriceEstimator", () => {
       status: "partial",
       totalAmount: 0,
       itemsNotFound: ["Arroz"],
+      failedCount: 0,
     });
     expect(requestStructuredJson).not.toHaveBeenCalled();
   });
 
-  it("mantém resultados úteis quando somente um item falha no provedor", async () => {
-    const search = vi
+  it("mantém evidências úteis quando somente um item falha tecnicamente", async () => {
+    const collect = vi
       .fn()
-      .mockResolvedValueOnce({
-        results: [
-          {
-            url: "https://super.angeloni.com.br/arroz",
-            markdown: "Arroz R$ 10,00",
-          },
-        ],
-      })
-      .mockRejectedValueOnce(
-        new IntegrationError({
-          code: "provider_error",
-          provider: "firecrawl",
-          message: "Falha segura",
-          retryable: true,
-        }),
-      );
+      .mockResolvedValueOnce([
+        foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz R$ 10,00"),
+      ])
+      .mockResolvedValueOnce([
+        failedSource("drogaria-venancio", "https://www.drogariavenancio.com.br/dipirona"),
+      ]);
     const requestStructuredJson = vi.fn().mockResolvedValue({
       data: {
         found: true,
@@ -159,7 +180,7 @@ describe("createPriceEstimator", () => {
       },
     });
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector: { collect },
       deepSeek: { requestStructuredJson },
     });
 
@@ -172,17 +193,14 @@ describe("createPriceEstimator", () => {
     });
   });
 
-  it("falha sem produzir estimativa quando todos os provedores falham", async () => {
-    const search = vi.fn().mockRejectedValue(
-      new IntegrationError({
-        code: "timeout_error",
-        provider: "firecrawl",
-        message: "Timeout seguro",
-        retryable: true,
-      }),
-    );
+  it("falha sem produzir estimativa quando todas as fontes falham para todos os itens", async () => {
+    const collect = vi
+      .fn()
+      .mockImplementation((item: PendingPriceItem) => [
+        failedSource("source", `https://example.com/${item.name.toLowerCase()}`),
+      ]);
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector: { collect },
       deepSeek: { requestStructuredJson: vi.fn() },
     });
 
@@ -192,14 +210,11 @@ describe("createPriceEstimator", () => {
   });
 
   it("rejeita preço ou fonte fora da evidência retornada", async () => {
-    const search = vi.fn().mockResolvedValue({
-      results: [
-        {
-          url: "https://super.angeloni.com.br/arroz",
-          markdown: "Arroz R$ 10,00",
-        },
-      ],
-    });
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz R$ 10,00"),
+      ]);
     const requestStructuredJson = vi.fn(async ({ decode }) => ({
       data: decode({
         found: true,
@@ -209,7 +224,7 @@ describe("createPriceEstimator", () => {
       model: "deepseek-v4-flash",
     }));
     const estimate = createPriceEstimator({
-      firecrawl: { search },
+      sourceCollector: { collect },
       deepSeek: { requestStructuredJson },
     });
 

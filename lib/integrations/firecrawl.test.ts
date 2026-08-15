@@ -95,6 +95,32 @@ describe("FirecrawlClient", () => {
         headers: expect.objectContaining({ Authorization: `Bearer ${API_KEY}` }),
       }),
     );
+    expect(fetcher).toHaveBeenNthCalledWith(
+      2,
+      "https://api.firecrawl.dev/v2/scrape",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: `Bearer ${API_KEY}` }),
+      }),
+    );
+    expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toEqual({
+      url: "https://example.com/arroz",
+      formats: ["markdown"],
+      onlyMainContent: true,
+      timeout: 30_000,
+    });
+  });
+
+  it("mapeia falhas HTTP do endpoint de scraping", async () => {
+    const client = createFirecrawlClient({
+      environment: { FIRECRAWL_API_KEY: API_KEY },
+      fetcher: vi.fn().mockResolvedValue(jsonResponse({}, 503)),
+    });
+
+    await expect(client.scrape("https://example.com/arroz")).rejects.toMatchObject({
+      code: "provider_error",
+      provider: "firecrawl",
+      retryable: true,
+    });
   });
 
   it("falha de forma segura quando a credencial está ausente", async () => {

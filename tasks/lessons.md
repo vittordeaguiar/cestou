@@ -10,3 +10,4 @@
 - Modais controlados sem `Trigger` precisam restaurar foco explicitamente em `onCloseAutoFocus`; preserve o acionador e ofereça um fallback conectado ao DOM quando a mutação puder removê-lo.
 - Em testes de timeout com timers falsos, registre a asserção de rejeição antes de avançar o relógio; anexar o handler depois do abort produz uma rejeição não tratada mesmo quando o teste parece passar.
 - Uma RPC `SECURITY DEFINER` usada por uma Server Action não deve herdar execução de `authenticated` quando grava dados que o RLS torna somente leitura; restrinja-a ao `service_role`, revalide o usuário recebido no banco e mantenha a chave apenas no módulo server-only.
+- Ao normalizar Markdown, remova linhas vazias antes de deduplicar linhas consecutivas; o teste deve refletir a ordem real do pipeline para não preservar duplicatas separadas apenas por espaços vazios.

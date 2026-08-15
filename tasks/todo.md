@@ -113,4 +113,33 @@
 - `npm run db:test` não conectou porque o Supabase/Docker local não está ativo; a suíte pgTAP nova permanece para execução no ambiente completo.
 - O primeiro build da rodada final falhou porque o sandbox não alcançou o Google Fonts; a repetição com rede permitida passou.
 - Nenhuma UI, scraping por seletores, fallback genérico, retentativa ou convite foi adicionado. `handoff.md` permanece não rastreado e inalterado.
+
+# V-58 — Scraping específico das fontes de preço
+
+## Plano
+
+- [x] Criar o coletor server-only para URLs específicas e chamadas Firecrawl `scrape`.
+- [x] Implementar seleção por categoria, prioridade, concorrência limitada, validação de domínio e normalização de Markdown.
+- [x] Diferenciar `found`, `not_found` e `failed` por fonte sem expor erros internos.
+- [x] Refatorar o estimador para consumir somente evidências normalizadas, preservando a Action e a persistência da V-57.
+- [x] Cobrir coletor, Firecrawl e estimador com testes unitários sem chamadas reais.
+- [x] Executar validação completa, documentar eventual smoke manual e revisar o diff.
+- [ ] Atualizar Linear, criar commit, fazer push e abrir PR pronto para revisão contra `main`.
+
+## Decisões
+
+- A V-58 usa somente o endpoint `scrape`; a busca genérica permanece na V-59.
+- Fontes habilitadas são ordenadas por prioridade e processadas com no máximo duas chamadas concorrentes por item.
+- Conteúdo vazio após normalização é `not_found`; falha parcial não interrompe as demais fontes e somente falha total produz `failed` para o item.
+- A localização permanece `unresolved` porque a lista ainda não fornece CEP, loja ou região.
+- Não serão adicionados retries, migrations, dependências, UI, interações de navegador, cookies artificiais ou seletores frágeis.
+
+## Review
+
+- O coletor usa somente `scrape`, mantém a ordem de prioridade, limita duas fontes concorrentes por item, valida o domínio retornado e normaliza o Markdown antes do DeepSeek.
+- O estimador preserva `PriceEstimateResult`, quantidade, persistência, lock e Server Action da V-57; somente o seam interno de coleta foi substituído.
+- A suíte passou com 27 arquivos e 158 testes; `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build` e `git diff --check` passaram.
+- `npm run db:test` não conectou ao PostgreSQL local (`LegacyDbConnectError`); nenhuma migration foi criada. `FIRECRAWL_API_KEY` não estava disponível, então a validação real do provedor permanece manual e documentada.
+- Linear foi atualizado: V-58 está em Testing; V-57, V-59, V-60 e V-62 receberam descrições alinhadas às fronteiras da entrega.
+- Pendente: commit, push, PR e mudança final de V-58 para Code Review.
 - O setup V-54–V-56 foi publicado no draft PR #15; a V-57 foi publicada isoladamente no draft PR empilhado #16.
