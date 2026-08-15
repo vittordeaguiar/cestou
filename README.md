@@ -69,5 +69,5 @@ app/                 # Rotas e layouts (App Router)
 components/          # Componentes React
 lib/supabase/        # Browser, server, admin clients + session middleware
 types/               # Tipos TypeScript compartilhados
-.cursor/rules/       # Regras do agente / padrões do projeto
+AGENTS.md            # Instruções operacionais para agentes
 ```
