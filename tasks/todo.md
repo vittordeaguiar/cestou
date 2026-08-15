@@ -48,6 +48,22 @@
 
 # Sprint 3 — Setup da estimativa de gasto
 
+# Correção — variáveis públicas no cliente Next.js
+
+## Plano
+
+- [x] Corrigir o acesso às variáveis públicas do Supabase no bundle client, preservando o helper server-side e o fallback da chave anon.
+- [x] Adicionar regressão para garantir que o cliente browser receba URL e chave públicas sem depender de lookup dinâmico em `process.env`.
+- [x] Executar testes direcionados, format check, lint, typecheck, build e revisar o diff sem incluir `handoff.md`.
+
+## Resultado
+
+- O cliente browser deixou de usar lookup dinâmico de `process.env`; referências públicas estáticas são agora entregues ao helper validável sem alterar o cliente server-side.
+- A regressão cobre a chave publishable e o fallback legado `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+- `npm test` passou com 27 arquivos e 170 testes; `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm run build` e `git diff --check` também passaram.
+- O erro era causado pelo bundle client do Next.js 16/Turbopack, não pela ausência da variável no `.env.local` nem pelas migrations do Supabase.
+- `handoff.md` permaneceu não rastreado e fora da alteração.
+
 ## Plano
 
 - [x] Atualizar `main` por fast-forward e criar `codex/sprint-3-estimation-setup`, preservando `handoff.md`.

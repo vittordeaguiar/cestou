@@ -50,6 +50,21 @@ export function getSupabasePublicEnv(env: EnvironmentVariables = process.env): S
   };
 }
 
+/** Public Supabase values for Client Components.
+ *
+ * Keep the process.env references static so Next.js can inline them into the
+ * browser bundle. The generic helper remains injectable for server code and
+ * tests, but dynamic lookups such as `const env = process.env` are not inlined
+ * by Next.js for client code.
+ */
+export function getSupabaseBrowserEnv(): SupabasePublicEnv {
+  return getSupabasePublicEnv({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  });
+}
+
 /** Service role key — never expose to the browser. */
 export function getSupabaseServiceRoleKey(env: EnvironmentVariables = process.env): string {
   return readRequired("SUPABASE_SERVICE_ROLE_KEY", env.SUPABASE_SERVICE_ROLE_KEY);
