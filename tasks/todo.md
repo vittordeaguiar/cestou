@@ -237,3 +237,20 @@
 - Foram adicionadas regressões para prompt, contrato, item incorreto, preço/fonte inválidos, campos extras, `found=false`, política de preço, fallback único, ausência de terceira chamada e falhas de transporte.
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (27 arquivos, 186 testes), `npm run build` e `git diff --check` passaram.
 - A documentação em `docs/fontes-de-precos.md` registra o contrato e o comportamento definitivo. Não houve migration, RLS, Server Action, lock, persistência, UI ou dependência nova; `handoff.md` permanece não rastreado e fora do commit.
+
+## Correção pós-review do PR #22 — limite de concorrência do DeepSeek
+
+### Plano
+
+- [x] Extrair o limitador FIFO para helper reutilizável sem alterar a semântica do Firecrawl.
+- [x] Limitar chamadas iniciais e de recuperação do DeepSeek no cliente compartilhado.
+- [x] Iniciar timeout somente após a aquisição do permit e liberar o permit em todos os caminhos.
+- [x] Cobrir concorrência máxima, FIFO, falha, timeout em fila e regressão do coletor.
+- [x] Executar validações, revisar o diff e criar commit local sem incluir `handoff.md`.
+
+### Review
+
+- A thread P2 aberta no PR #22 apontou corretamente que o `Promise.all` por item iniciava retries do DeepSeek sem limitação compartilhada.
+- `createFifoLimiter` agora é reutilizado pelo Firecrawl e pelo DeepSeek; o cliente DeepSeek usa limite padrão de duas chamadas simultâneas, incluindo chamadas de recuperação.
+- O timeout só começa quando a chamada entra no provedor, e o permit é liberado em sucesso, falha de transporte, resposta inválida, HTTP e timeout por meio do `finally` do limitador.
+- Foram adicionados testes de FIFO, concorrência máxima, liberação após falha e timeout após espera na fila; os testes existentes do coletor continuam passando.

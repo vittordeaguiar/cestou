@@ -191,4 +191,6 @@ não confirmada, variante ambígua, conflito entre valores ou indisponibilidade 
 Se a resposta do DeepSeek for inválida ou incompatível com esse contrato, a estimativa
 faz uma única nova chamada com as mesmas evidências e uma instrução de correção. Falhas
 de transporte, autenticação, limite ou timeout não são repetidas nessa camada e seguem
-como falhas tipadas para o tratamento posterior.
+como falhas tipadas para o tratamento posterior. Todas as chamadas iniciais e de
+recuperação passam por uma fila FIFO de no máximo duas requisições simultâneas por
+instância do cliente DeepSeek; o timeout começa somente após a chamada adquirir espaço.

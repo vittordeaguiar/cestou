@@ -14,3 +14,4 @@
 - Um limite aplicado dentro de cada item não protege o provedor quando o orquestrador inicia vários itens em paralelo; a fila deve ser compartilhada no limite da integração e testada com coletas simultâneas.
 - Helpers de ambiente compartilhados entre servidor e Client Components não podem passar `process.env` por lookup dinâmico; para variáveis `NEXT_PUBLIC_*`, mantenha referências estáticas no caminho client e cubra esse adaptador com um teste dedicado.
 - Em buscas genéricas, derive relevância dos tokens de título, descrição e conteúdo normalizado; a URL retornada é uma referência de navegação, não evidência suficiente de que o resultado corresponde ao item.
+- Retries iniciados dentro de um `Promise.all` precisam atravessar o mesmo limitador do provedor que as chamadas iniciais; limitar somente a coleta de cada item permite uma rajada concorrente de recuperações.

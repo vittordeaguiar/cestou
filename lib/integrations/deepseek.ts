@@ -2,10 +2,12 @@ import "server-only";
 
 import { getDeepSeekConfig } from "@/lib/integrations/config";
 import { IntegrationError } from "@/lib/integrations/errors";
+import { createFifoLimiter } from "@/lib/integrations/fifo-limiter";
 
 const DEEPSEEK_CHAT_COMPLETIONS_URL = "https://api.deepseek.com/chat/completions";
 const DEEPSEEK_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_TOKENS = 2_048;
+const DEFAULT_MAX_CONCURRENT_REQUESTS = 2;
 
 type ServerEnvironment = Record<string, string | undefined>;
 type HttpFetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -35,6 +37,7 @@ type CreateDeepSeekClientOptions = {
   environment?: ServerEnvironment;
   fetcher?: HttpFetcher;
   requestTimeoutMs?: number;
+  maxConcurrentRequests?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -152,85 +155,92 @@ function assertRequest<T>(request: StructuredJsonRequest<T>) {
 export function createDeepSeekClient(options: CreateDeepSeekClientOptions = {}) {
   const fetcher = options.fetcher ?? fetch;
   const requestTimeoutMs = options.requestTimeoutMs ?? DEEPSEEK_REQUEST_TIMEOUT_MS;
+  const maxConcurrentRequests = options.maxConcurrentRequests ?? DEFAULT_MAX_CONCURRENT_REQUESTS;
+  if (!Number.isInteger(maxConcurrentRequests) || maxConcurrentRequests < 1) {
+    throw new TypeError("A concorrência do DeepSeek deve ser um inteiro positivo.");
+  }
+  const runWithDeepSeekPermit = createFifoLimiter(maxConcurrentRequests);
 
   return {
     async requestStructuredJson<T>(
       request: StructuredJsonRequest<T>,
     ): Promise<StructuredJsonResponse<T>> {
       const maxTokens = assertRequest(request);
-      const { apiKey, model } = getDeepSeekConfig(options.environment);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+      return runWithDeepSeekPermit(async () => {
+        const { apiKey, model } = getDeepSeekConfig(options.environment);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
 
-      let response: Response;
-      try {
-        response = await fetcher(DEEPSEEK_CHAT_COMPLETIONS_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model,
-            messages: request.messages,
-            thinking: { type: "disabled" },
-            response_format: { type: "json_object" },
-            max_tokens: maxTokens,
-            stream: false,
-          }),
-          signal: controller.signal,
-        });
-      } catch (cause) {
-        if (controller.signal.aborted) {
+        let response: Response;
+        try {
+          response = await fetcher(DEEPSEEK_CHAT_COMPLETIONS_URL, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model,
+              messages: request.messages,
+              thinking: { type: "disabled" },
+              response_format: { type: "json_object" },
+              max_tokens: maxTokens,
+              stream: false,
+            }),
+            signal: controller.signal,
+          });
+        } catch (cause) {
+          if (controller.signal.aborted) {
+            throw new IntegrationError({
+              code: "timeout_error",
+              provider: "deepseek",
+              message: "O DeepSeek excedeu o tempo limite da requisição.",
+              retryable: true,
+              cause,
+            });
+          }
+
           throw new IntegrationError({
-            code: "timeout_error",
+            code: "provider_error",
             provider: "deepseek",
-            message: "O DeepSeek excedeu o tempo limite da requisição.",
+            message: "Não foi possível conectar ao DeepSeek.",
             retryable: true,
             cause,
           });
+        } finally {
+          clearTimeout(timeout);
         }
 
-        throw new IntegrationError({
-          code: "provider_error",
-          provider: "deepseek",
-          message: "Não foi possível conectar ao DeepSeek.",
-          retryable: true,
-          cause,
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+        if (!response.ok) throw providerError(response);
 
-      if (!response.ok) throw providerError(response);
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch (cause) {
+          throw invalidResponse(cause);
+        }
 
-      let payload: unknown;
-      try {
-        payload = await response.json();
-      } catch (cause) {
-        throw invalidResponse(cause);
-      }
+        const completion = readCompletion(payload);
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(completion.content);
+        } catch (cause) {
+          throw invalidResponse(cause);
+        }
 
-      const completion = readCompletion(payload);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(completion.content);
-      } catch (cause) {
-        throw invalidResponse(cause);
-      }
+        let data: T;
+        try {
+          data = request.decode(parsed);
+        } catch (cause) {
+          throw invalidResponse(cause);
+        }
 
-      let data: T;
-      try {
-        data = request.decode(parsed);
-      } catch (cause) {
-        throw invalidResponse(cause);
-      }
-
-      return {
-        data,
-        model: completion.model,
-        usage: completion.usage,
-      };
+        return {
+          data,
+          model: completion.model,
+          usage: completion.usage,
+        };
+      });
     },
   };
 }
