@@ -194,3 +194,18 @@ de transporte, autenticação, limite ou timeout não são repetidas nessa camad
 como falhas tipadas para o tratamento posterior. Todas as chamadas iniciais e de
 recuperação passam por uma fila FIFO de no máximo duas requisições simultâneas por
 instância do cliente DeepSeek; o timeout começa somente após a chamada adquirir espaço.
+
+## V-62 — Itens não encontrados e falhas de busca
+
+Cada item da estimativa termina internamente em um de três estados: `found`, `not_found` ou
+`failed`. A ausência de preço, inclusive quando o DeepSeek responde `found: false`, é
+`not_found` e não aumenta a contagem de falhas. Um item só é `failed` quando as tentativas
+relevantes terminam tecnicamente sem uma conclusão útil; se houver uma fonte
+`not_found` junto de falhas parciais, a ausência de preço prevalece.
+
+Itens `failed` só são processados novamente uma vez quando todas as falhas que determinaram
+o resultado são recuperáveis segundo os erros tipados das integrações. Itens `found` e
+`not_found` não são repetidos, e a recuperação única de JSON inválido do V-60 continua
+limitada à chamada inicial do DeepSeek. Depois da segunda passada, o total parcial preserva
+somente os preços encontrados, `missing_items` recebe apenas itens `not_found` e a Action
+expõe apenas contagens seguras de itens sem preço e falhos.

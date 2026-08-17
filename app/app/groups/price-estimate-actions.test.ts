@@ -160,6 +160,7 @@ describe("requestPriceEstimateAction", () => {
       estimatedTotal: 20,
       itemsProcessed: 1,
       itemsNotFound: 0,
+      itemsFailed: 0,
     });
 
     expect(estimatePendingItems).toHaveBeenCalledWith([
@@ -203,7 +204,61 @@ describe("requestPriceEstimateAction", () => {
       estimatedTotal: 10,
       itemsProcessed: 1,
       itemsNotFound: 1,
+      itemsFailed: 0,
     });
+  });
+
+  it("separa falhas de consulta dos itens sem preço no retorno seguro", async () => {
+    const { rpc } = mockClient({});
+    estimatePendingItems.mockResolvedValue({
+      status: "partial",
+      totalAmount: 10,
+      itemsNotFound: ["Arroz"],
+      processedCount: 1,
+      failedCount: 1,
+    });
+
+    await expect(
+      requestPriceEstimateAction(initialPriceEstimateActionState, formData()),
+    ).resolves.toEqual({
+      status: "partial",
+      message: "Estimativa atualizada com itens sem preço e falhas de consulta.",
+      estimatedTotal: 10,
+      itemsProcessed: 1,
+      itemsNotFound: 1,
+      itemsFailed: 1,
+    });
+    expect(rpc).toHaveBeenCalledWith("finish_price_estimate", {
+      target_list_id: LIST_ID,
+      lock_token: expect.any(String),
+      estimated_total: 10,
+      missing_items: ["Arroz"],
+      requested_by: USER_ID,
+    });
+  });
+
+  it("retorna mensagem segura quando somente itens falham na consulta", async () => {
+    const { rpc } = mockClient({});
+    estimatePendingItems.mockResolvedValue({
+      status: "partial",
+      totalAmount: 10,
+      itemsNotFound: [],
+      processedCount: 0,
+      failedCount: 1,
+    });
+
+    await expect(
+      requestPriceEstimateAction(initialPriceEstimateActionState, formData()),
+    ).resolves.toMatchObject({
+      status: "partial",
+      message: "Estimativa atualizada, mas alguns itens falharam na consulta.",
+      itemsNotFound: 0,
+      itemsFailed: 1,
+    });
+    expect(rpc).toHaveBeenCalledWith(
+      "finish_price_estimate",
+      expect.objectContaining({ missing_items: [] }),
+    );
   });
 
   it("não inicia outra execução enquanto a lista já está bloqueada", async () => {
