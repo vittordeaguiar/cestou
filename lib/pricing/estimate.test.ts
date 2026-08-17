@@ -48,13 +48,13 @@ function notFoundSource(sourceId: string, searchUrl: string) {
   } satisfies SourceCollectionResult;
 }
 
-function failedSource(sourceId: string, searchUrl: string) {
+function failedSource(sourceId: string, searchUrl: string, retryable = true) {
   return {
     status: "failed" as const,
     sourceId,
     searchUrl,
-    errorCode: "timeout_error" as const,
-    retryable: true,
+    errorCode: retryable ? ("timeout_error" as const) : ("authentication_error" as const),
+    retryable,
     locationStatus: "unresolved" as const,
   } satisfies SourceCollectionResult;
 }
@@ -306,7 +306,7 @@ describe("createPriceEstimator", () => {
         foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz R$ 10,00"),
       ])
       .mockResolvedValueOnce([
-        failedSource("drogaria-venancio", "https://www.drogariavenancio.com.br/dipirona"),
+        failedSource("drogaria-venancio", "https://www.drogariavenancio.com.br/dipirona", false),
       ]);
     const requestStructuredJson = vi.fn().mockResolvedValue({
       data: foundPrice("Arroz", 10, "https://super.angeloni.com.br/arroz"),
@@ -319,10 +319,110 @@ describe("createPriceEstimator", () => {
     await expect(estimate(ITEMS)).resolves.toEqual({
       status: "partial",
       totalAmount: 20,
-      itemsNotFound: ["Dipirona"],
+      itemsNotFound: [],
       processedCount: 1,
       failedCount: 1,
     });
+  });
+
+  it("separa item não encontrado de falha técnica sem reclassificar a falha", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValueOnce([notFoundSource("angeloni", "https://super.angeloni.com.br/arroz")])
+      .mockResolvedValueOnce([
+        failedSource("drogaria-venancio", "https://www.drogariavenancio.com.br/dipirona", false),
+      ]);
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
+      deepSeek: { requestStructuredJson: vi.fn() },
+    });
+
+    await expect(estimate(ITEMS)).resolves.toEqual({
+      status: "partial",
+      totalAmount: 0,
+      itemsNotFound: ["Arroz"],
+      processedCount: 1,
+      failedCount: 1,
+    });
+  });
+
+  it("repete somente itens falhos e recuperáveis em uma segunda passada", async () => {
+    const attempts = new Map<string, number>();
+    const collect = vi.fn(async (item: PendingPriceItem) => {
+      const attempt = (attempts.get(item.name) ?? 0) + 1;
+      attempts.set(item.name, attempt);
+
+      if (item.name === "Arroz" && attempt === 1) {
+        return [failedSource("angeloni", "https://super.angeloni.com.br/arroz")];
+      }
+
+      if (item.name === "Arroz") {
+        return [foundSource("angeloni", "https://super.angeloni.com.br/arroz")];
+      }
+
+      return [notFoundSource("drogaria-venancio", "https://www.drogariavenancio.com.br/dipirona")];
+    });
+    const requestStructuredJson = vi.fn().mockResolvedValue({
+      data: foundPrice("Arroz", 10, "https://super.angeloni.com.br/arroz"),
+    });
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
+      deepSeek: { requestStructuredJson },
+    });
+
+    await expect(estimate(ITEMS)).resolves.toEqual({
+      status: "partial",
+      totalAmount: 20,
+      itemsNotFound: ["Dipirona"],
+      processedCount: 2,
+      failedCount: 0,
+    });
+    expect(attempts).toEqual(
+      new Map([
+        ["Arroz", 2],
+        ["Dipirona", 1],
+      ]),
+    );
+    expect(requestStructuredJson).toHaveBeenCalledTimes(1);
+  });
+
+  it("não repete falhas não recuperáveis", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([failedSource("angeloni", "https://super.angeloni.com.br/arroz", false)]);
+    const search = vi.fn().mockResolvedValue([]);
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search },
+      deepSeek: { requestStructuredJson: vi.fn() },
+    });
+
+    await expect(estimate([ITEMS[0]!])).rejects.toThrow(
+      "Não foi possível consultar preços para nenhum item.",
+    );
+    expect(collect).toHaveBeenCalledTimes(1);
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  it("não faz uma terceira tentativa quando o retry também falha", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValueOnce([
+        failedSource("angeloni", "https://super.angeloni.com.br/arroz", true),
+      ])
+      .mockResolvedValueOnce([
+        failedSource("angeloni", "https://super.angeloni.com.br/arroz", false),
+      ]);
+    const search = vi.fn().mockResolvedValue([]);
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search },
+      deepSeek: { requestStructuredJson: vi.fn() },
+    });
+
+    await expect(estimate([ITEMS[0]!])).rejects.toThrow(
+      "Não foi possível consultar preços para nenhum item.",
+    );
+    expect(collect).toHaveBeenCalledTimes(2);
+    expect(search).toHaveBeenCalledTimes(2);
   });
 
   it("falha sem produzir estimativa quando todas as fontes falham para todos os itens", async () => {
@@ -566,5 +666,37 @@ describe("createPriceEstimator", () => {
     );
     expect(requestStructuredJson).toHaveBeenCalledTimes(1);
     await expect(estimate([ITEMS[0]!])).rejects.not.toThrow("segredo interno");
+  });
+
+  it("repete uma falha recuperável do DeepSeek somente uma vez", async () => {
+    const collect = vi
+      .fn()
+      .mockResolvedValue([
+        foundSource("angeloni", "https://super.angeloni.com.br/arroz", "Arroz R$ 10,00"),
+      ]);
+    const retryableProviderError = new IntegrationError({
+      code: "provider_error",
+      provider: "deepseek",
+      message: "falha transitória segura",
+      retryable: true,
+    });
+    const requestStructuredJson = vi
+      .fn()
+      .mockRejectedValueOnce(retryableProviderError)
+      .mockResolvedValueOnce({
+        data: foundPrice("Arroz", 10, "https://super.angeloni.com.br/arroz"),
+      });
+    const estimate = createPriceEstimator({
+      sourceCollector: { collect, search: vi.fn().mockResolvedValue([]) },
+      deepSeek: { requestStructuredJson },
+    });
+
+    await expect(estimate([ITEMS[0]!])).resolves.toMatchObject({
+      status: "complete",
+      totalAmount: 20,
+      failedCount: 0,
+    });
+    expect(collect).toHaveBeenCalledTimes(2);
+    expect(requestStructuredJson).toHaveBeenCalledTimes(2);
   });
 });

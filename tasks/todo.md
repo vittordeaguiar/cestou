@@ -254,3 +254,54 @@
 - `createFifoLimiter` agora é reutilizado pelo Firecrawl e pelo DeepSeek; o cliente DeepSeek usa limite padrão de duas chamadas simultâneas, incluindo chamadas de recuperação.
 - O timeout só começa quando a chamada entra no provedor, e o permit é liberado em sucesso, falha de transporte, resposta inválida, HTTP e timeout por meio do `finally` do limitador.
 - Foram adicionados testes de FIFO, concorrência máxima, liberação após falha e timeout após espera na fila; os testes existentes do coletor continuam passando.
+
+# Próximo trabalho planejado — V-62 — Tratamento de itens não encontrados / falha de busca
+
+## Contexto
+
+- V-60 foi incorporada ao `main` pelo commit squash `ce67c4e` do PR #22; o commit corretivo `08fd3eb` foi publicado e o comentário sobre concorrência do DeepSeek foi resolvido.
+- V-62 foi movida para `Development` no início da implementação.
+- A implementação deve começar somente depois do merge do PR #22, sincronizando `main` por fast-forward e criando uma branch `task/` própria.
+- V-62 deve consolidar os estados já produzidos por Firecrawl/DeepSeek sem antecipar a UI da V-63.
+
+## Plano verificável
+
+- [x] Após o merge da V-60, atualizar `main` e criar a branch da V-62 preservando `handoff.md`.
+- [x] Mover V-62 para `Development` usando o status real `de08aa9f-44a0-429b-8667-68e9d5bd29f7`.
+- [x] Mapear cada item para `found`, `not_found` ou `failed`, preservando a diferença entre ausência de preço e falha técnica.
+- [x] Classificar como `not_found` quando as tentativas concluídas não encontrarem preço; classificar como `failed` somente quando a coleta/extração falhar tecnicamente sem evidência conclusiva.
+- [x] Fazer uma única passada de retry somente sobre itens que terminaram em `failed`, reutilizando `IntegrationError.retryable` e os códigos existentes sem duplicar regras dos provedores.
+- [x] Não repetir itens `found` ou `not_found`, não reprocessar a lista inteira e não criar retry recursivo.
+- [x] Preservar a recuperação única de `invalid_response_error` definida na V-60; o retry da V-62 deve tratar apenas a falha final do item conforme a política de retry definida nos erros tipados.
+- [x] Separar itens sem preço de itens que falharam no resultado interno e expor somente mensagens/contagens seguras na Action, sem payload ou causa interna do provedor.
+- [x] Manter total parcial, lock, persistência, autorização, contrato da busca genérica e limitadores globais; nenhuma migration, RLS, dependência ou UI nova.
+- [x] Cobrir falha total, falha parcial, mistura de `not_found` e `failed`, retry seletivo, sucesso no retry, falha após retry, ausência de retry para `not_found`/`found` e não vazamento de erro interno.
+- [x] Atualizar `tasks/lessons.md` após eventuais correções, registrar o resultado nesta seção e executar a validação completa.
+- [x] Mover V-62 para `Testing` usando `598da7d4-c83c-4239-90a6-5b42e3970b75` após as validações; commit, push e PR somente quando solicitados.
+
+## Decisões e pontos de atenção
+
+- A interpretação operacional adotada é retry automático em uma única passada dentro da mesma estimativa, por item falho. Um retry iniciado posteriormente por botão da UI não faz parte desta task e deve ser reavaliado na V-63.
+- `not_found` não deve aumentar `failedCount`; itens falhos não devem aparecer apenas como “não encontrados”. Se o contrato público precisar ser ampliado, prefira nomes/contagens seguros e mantenha códigos detalhados somente no servidor.
+- Se houver fontes específicas `not_found` e uma falha genérica parcial, não tratar o item como falha total sem evidência de que todas as tentativas relevantes falharam tecnicamente.
+- A busca genérica continua sendo acionada somente quando nenhuma fonte específica retornar `found`; uma resposta válida sem preço no DeepSeek não deve iniciar nova busca.
+- O retry da V-62 não deve substituir o retry interno único da V-60 para JSON inválido nem criar uma terceira tentativa de reparo para a mesma resposta inválida.
+
+## Arquivos/seams prováveis
+
+- `lib/pricing/estimate.ts`: separar processamento/classificação por item, transportar falhas tipadas com segurança e executar a passada seletiva.
+- `lib/pricing/estimate.test.ts`: regressões de estados, contagem, retry seletivo e agregação parcial.
+- `lib/pricing/source-collector.ts` e `lib/integrations/errors.ts`: reutilizar contratos e propriedades existentes; alterar somente se necessário para transportar a classificação sem duplicar lógica.
+- `app/app/groups/price-estimate-actions.ts`, `lib/pricing/action-state.ts` e seus testes: ajustar apenas o contrato seguro necessário para diferenciar falha de item de item não encontrado.
+- `tasks/lessons.md`, `docs/fontes-de-precos.md` e esta seção de `tasks/todo.md`: registrar decisões e validações.
+
+## Resultado
+
+- O estimador agora preserva `found`, `not_found` e `failed` por item; itens com `not_found` não são confundidos com falhas técnicas e não entram em `failedCount`.
+- Falhas técnicas só são repetidas uma vez quando todas as falhas determinantes são recuperáveis; itens encontrados ou não encontrados não são reprocessados, e o reparo interno de JSON inválido do V-60 permanece único.
+- A Server Action passou a expor `itemsFailed` como contagem segura e persiste em `missing_items` somente os itens `not_found`; nenhuma migration, RLS, dependência, lock ou UI foi alterada.
+- A mensagem da Action foi extraída para uma função nomeada, com cobertura específica para resultados contendo somente falhas técnicas.
+- Foram adicionadas regressões para falhas mistas, retry seletivo, retry recuperável do DeepSeek, falha não recuperável, ausência de terceira tentativa, contagens seguras e persistência parcial.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (27 arquivos, 196 testes), `npm run build` e `git diff --check` passaram.
+- O build Next.js 16.2.10 compilou e gerou todas as rotas sem credenciais reais de Firecrawl/DeepSeek; nenhum smoke externo foi executado.
+- `handoff.md` permaneceu não rastreado e fora do diff. O commit `4be9c99` foi publicado na branch `task/v-62-failed-item-handling` e o draft PR #23 foi aberto contra `main`; o check da Vercel permanece pendente.

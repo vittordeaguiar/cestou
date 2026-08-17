@@ -4,6 +4,7 @@ export type PriceEstimateActionState = {
   estimatedTotal?: number;
   itemsProcessed?: number;
   itemsNotFound?: number;
+  itemsFailed?: number;
 };
 
 export const initialPriceEstimateActionState: PriceEstimateActionState = {

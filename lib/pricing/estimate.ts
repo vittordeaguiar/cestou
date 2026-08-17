@@ -63,7 +63,13 @@ type ExtractedPrice = {
 };
 
 type ItemEstimate =
-  { kind: "found"; subtotal: number } | { kind: "not_found" } | { kind: "failed" };
+  | { kind: "found"; subtotal: number }
+  | { kind: "not_found" }
+  | { kind: "failed"; retryable: boolean };
+
+type FailureSignal = {
+  retryable: boolean;
+};
 
 type SourceEvidenceResult = SourceCollectionResult | SourceSearchResult;
 type FoundSourceCollectionResult = Extract<SourceCollectionResult, { status: "found" }>;
@@ -86,6 +92,36 @@ function isFoundSourceSearchResult(result: SourceSearchResult): result is FoundS
 
 function isFailedSourceResult(result: SourceEvidenceResult) {
   return result.status === "failed";
+}
+
+function failureSignal(error: unknown): FailureSignal {
+  return {
+    retryable: error instanceof IntegrationError && error.retryable,
+  };
+}
+
+function failedEstimate(error: unknown): ItemEstimate {
+  return { kind: "failed", ...failureSignal(error) };
+}
+
+function classifyNoEvidence(
+  results: readonly SourceEvidenceResult[],
+  additionalFailures: readonly FailureSignal[] = [],
+): ItemEstimate {
+  if (results.some((result) => result.status === "not_found")) {
+    return { kind: "not_found" };
+  }
+
+  const failures = [
+    ...results.filter(isFailedSourceResult).map((result) => ({ retryable: result.retryable })),
+    ...additionalFailures,
+  ];
+
+  if (failures.length === 0) {
+    return { kind: "not_found" };
+  }
+
+  return { kind: "failed", retryable: failures.every((failure) => failure.retryable) };
 }
 
 function roundCurrency(value: number) {
@@ -203,52 +239,77 @@ async function requestPriceExtraction(
   }
 }
 
+async function estimateItem(
+  dependencies: PriceEstimatorDependencies,
+  item: PendingPriceItem,
+): Promise<ItemEstimate> {
+  let collection: SourceCollectionResult[];
+  try {
+    collection = await dependencies.sourceCollector.collect({
+      name: item.name,
+      category: item.category,
+    });
+  } catch (error) {
+    return failedEstimate(error);
+  }
+
+  let allSources: SourceEvidenceResult[] = collection;
+  let foundSources: FoundSourceResult[] = collection.filter(isFoundSourceCollectionResult);
+
+  if (foundSources.length === 0) {
+    let genericSearchResults: SourceSearchResult[];
+    try {
+      genericSearchResults = await dependencies.sourceCollector.search({
+        name: item.name,
+        category: item.category,
+      });
+    } catch (error) {
+      return classifyNoEvidence(allSources, [failureSignal(error)]);
+    }
+
+    allSources = [...collection, ...genericSearchResults];
+    foundSources = genericSearchResults.filter(isFoundSourceSearchResult);
+  }
+
+  if (foundSources.length === 0) {
+    return classifyNoEvidence(allSources);
+  }
+
+  try {
+    const extraction = await requestPriceExtraction(dependencies.deepSeek, item, foundSources);
+
+    if (!extraction.data.found || extraction.data.unitPrice === null) {
+      return { kind: "not_found" };
+    }
+
+    return {
+      kind: "found",
+      subtotal: roundCurrency(extraction.data.unitPrice * item.quantity),
+    };
+  } catch (error) {
+    return failedEstimate(error);
+  }
+}
+
 export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
   return async function estimate(items: readonly PendingPriceItem[]): Promise<PriceEstimateResult> {
-    const itemResults = await Promise.all(
-      items.map(async (item): Promise<ItemEstimate> => {
-        try {
-          const collection = await dependencies.sourceCollector.collect({
-            name: item.name,
-            category: item.category,
-          });
-          let allSources: SourceEvidenceResult[] = collection;
-          let foundSources: FoundSourceResult[] = collection.filter(isFoundSourceCollectionResult);
-
-          if (foundSources.length === 0) {
-            const genericSearchResults = await dependencies.sourceCollector.search({
-              name: item.name,
-              category: item.category,
-            });
-            allSources = [...collection, ...genericSearchResults];
-            foundSources = genericSearchResults.filter(isFoundSourceSearchResult);
-          }
-
-          if (foundSources.length === 0) {
-            return allSources.length > 0 && allSources.every(isFailedSourceResult)
-              ? { kind: "failed" }
-              : { kind: "not_found" };
-          }
-
-          const extraction = await requestPriceExtraction(
-            dependencies.deepSeek,
-            item,
-            foundSources,
-          );
-
-          if (!extraction.data.found || extraction.data.unitPrice === null) {
-            return { kind: "not_found" };
-          }
-
-          return {
-            kind: "found",
-            subtotal: roundCurrency(extraction.data.unitPrice * item.quantity),
-          };
-        } catch {
-          return { kind: "failed" };
-        }
-      }),
+    const itemResults: ItemEstimate[] = await Promise.all(
+      items.map((item) => estimateItem(dependencies, item)),
     );
+
+    const retryIndexes = itemResults.flatMap((result, index) =>
+      result.kind === "failed" && result.retryable ? [index] : [],
+    );
+
+    if (retryIndexes.length > 0) {
+      const retryResults = await Promise.all(
+        retryIndexes.map((index) => estimateItem(dependencies, items[index]!)),
+      );
+
+      retryIndexes.forEach((index, retryIndex) => {
+        itemResults[index] = retryResults[retryIndex]!;
+      });
+    }
 
     const failedCount = itemResults.filter((result) => result.kind === "failed").length;
     if (items.length > 0 && failedCount === items.length) {
@@ -256,7 +317,7 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
     }
 
     const itemsNotFound = items
-      .filter((_item, index) => itemResults[index]?.kind !== "found")
+      .filter((_item, index) => itemResults[index]?.kind === "not_found")
       .map((item) => item.name);
     const totalAmount = roundCurrency(
       itemResults.reduce(
@@ -266,7 +327,7 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
     );
 
     return {
-      status: itemsNotFound.length > 0 ? "partial" : "complete",
+      status: itemsNotFound.length > 0 || failedCount > 0 ? "partial" : "complete",
       totalAmount,
       itemsNotFound,
       processedCount: items.length - failedCount,

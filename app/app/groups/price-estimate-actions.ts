@@ -7,13 +7,35 @@ import { buildGroupListPath, getCurrentGroupMembership } from "@/lib/groups/memb
 import { isUuid } from "@/lib/lists/sync";
 import { isItemCategory } from "@/lib/lists/category";
 import { type PriceEstimateActionState } from "@/lib/pricing/action-state";
-import { estimatePendingItems, type PendingPriceItem } from "@/lib/pricing/estimate";
+import {
+  estimatePendingItems,
+  type PendingPriceItem,
+  type PriceEstimateResult,
+} from "@/lib/pricing/estimate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database";
 
 function actionError(message: string): PriceEstimateActionState {
   return { status: "error", message };
+}
+
+function resultMessage(
+  result: Pick<PriceEstimateResult, "status" | "failedCount" | "itemsNotFound">,
+) {
+  if (result.status === "complete") {
+    return "Estimativa atualizada.";
+  }
+
+  if (result.failedCount > 0 && result.itemsNotFound.length > 0) {
+    return "Estimativa atualizada com itens sem preço e falhas de consulta.";
+  }
+
+  if (result.failedCount > 0) {
+    return "Estimativa atualizada, mas alguns itens falharam na consulta.";
+  }
+
+  return "Estimativa atualizada com alguns itens sem preço.";
 }
 
 function readGroupId(formData: FormData) {
@@ -112,13 +134,11 @@ async function runPriceEstimateAction(groupId: string): Promise<PriceEstimateAct
 
     return {
       status: result.status === "complete" ? "success" : "partial",
-      message:
-        result.status === "complete"
-          ? "Estimativa atualizada."
-          : "Estimativa atualizada com alguns itens sem preço.",
+      message: resultMessage(result),
       estimatedTotal: result.totalAmount,
       itemsProcessed: result.processedCount,
       itemsNotFound: result.itemsNotFound.length,
+      itemsFailed: result.failedCount,
     };
   } catch {
     await releaseLock(admin, membership.listId, lockToken, userId);
