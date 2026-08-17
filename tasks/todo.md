@@ -304,4 +304,4 @@
 - Foram adicionadas regressões para falhas mistas, retry seletivo, retry recuperável do DeepSeek, falha não recuperável, ausência de terceira tentativa, contagens seguras e persistência parcial.
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (27 arquivos, 196 testes), `npm run build` e `git diff --check` passaram.
 - O build Next.js 16.2.10 compilou e gerou todas as rotas sem credenciais reais de Firecrawl/DeepSeek; nenhum smoke externo foi executado.
-- `handoff.md` permaneceu não rastreado e fora do diff. A branch local é `task/v-62-failed-item-handling`; a entrega será registrada em commit local, sem push ou PR.
+- `handoff.md` permaneceu não rastreado e fora do diff. O commit `4be9c99` foi publicado na branch `task/v-62-failed-item-handling` e o draft PR #23 foi aberto contra `main`; o check da Vercel permanece pendente.
