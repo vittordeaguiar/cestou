@@ -7,6 +7,7 @@ import {
   type FirecrawlSearchResponse,
 } from "@/lib/integrations/firecrawl";
 import { IntegrationError, type IntegrationErrorCode } from "@/lib/integrations/errors";
+import { createFifoLimiter } from "@/lib/integrations/fifo-limiter";
 import {
   buildPriceSourceSearchUrl,
   getEnabledPriceSources,
@@ -91,12 +92,6 @@ export type SourceCollectorPort = {
 type SourceCollectorOptions = {
   firecrawl: FirecrawlScrapePort & FirecrawlSearchPort;
   maxConcurrentScrapes?: number;
-};
-
-type PendingTask = {
-  task: () => Promise<unknown>;
-  resolve: (value: unknown) => void;
-  reject: (reason?: unknown) => void;
 };
 
 function sourceCategoryFor(category: ItemCategory | null) {
@@ -229,37 +224,6 @@ async function mapWithConcurrency<T, R>(
   const workerCount = Math.min(maxConcurrent, values.length);
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
   return results;
-}
-
-function createFifoLimiter(maxConcurrent: number) {
-  let activeCount = 0;
-  const pendingTasks: PendingTask[] = [];
-
-  function drain() {
-    while (activeCount < maxConcurrent && pendingTasks.length > 0) {
-      const pendingTask = pendingTasks.shift()!;
-      activeCount += 1;
-
-      void pendingTask
-        .task()
-        .then(pendingTask.resolve, pendingTask.reject)
-        .finally(() => {
-          activeCount -= 1;
-          drain();
-        });
-    }
-  }
-
-  return function run<T>(task: () => Promise<T>) {
-    return new Promise<T>((resolve, reject) => {
-      pendingTasks.push({
-        task: async () => task(),
-        resolve: (value) => resolve(value as T),
-        reject,
-      });
-      drain();
-    });
-  };
 }
 
 export function createPriceSourceCollector({

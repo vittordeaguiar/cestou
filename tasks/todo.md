@@ -208,3 +208,49 @@
 - Foram adicionados testes de payload Firecrawl, normalização, filtragem, duplicidade, URLs inseguras, falhas, fallback, concorrência global e não uso prematuro; a suíte passou com 27 arquivos e 177 testes.
 - `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build` e `git diff --check` passaram.
 - Nenhuma migration, alteração de RLS, Server Action, UI, dependência ou chamada real ao Firecrawl foi adicionada. `handoff.md` permanece não rastreado e fora do commit.
+
+# V-60 — Prompt definitivo do DeepSeek
+
+## Plano
+
+- [x] Finalizar o contrato JSON com `item`, `found`, `unitPrice` e `sourceUrl`, preservando a integração existente.
+- [x] Substituir o prompt preliminar por regras fixas de extração segura, promoções explícitas, ambiguidades e indisponibilidade.
+- [x] Validar item solicitado, preço positivo e URL pertencente às evidências fornecidas.
+- [x] Implementar uma única recuperação para `invalid_response_error`, sem retry de falhas de transporte.
+- [x] Cobrir contrato, prompt, respostas ambíguas, múltiplos preços, promoções, indisponibilidade e fallback.
+- [x] Executar validações completas, revisar o diff e registrar o resultado sem incluir `handoff.md`.
+- [x] Atualizar V-60 para `Testing` e criar commit local após as validações.
+
+## Decisões
+
+- O contrato mantém os nomes internos existentes e adiciona `item`; `sourceUrl` representa a fonte do preço.
+- O item retornado precisa corresponder ao item solicitado após normalização simples de caixa e espaços.
+- Promoção só é aceita quando estiver claramente vigente e associada ao item; preços conflitantes, variantes ambíguas e indisponibilidade retornam `found: false`.
+- A recuperação faz exatamente uma nova chamada apenas para `invalid_response_error`, reutilizando as mesmas evidências e uma instrução mais estrita.
+- Não haverá migration, dependência, alteração da Server Action, lock, persistência, UI, RLS ou contrato das fontes.
+
+## Review
+
+- O estimador agora envia um prompt fixo com regras explícitas para não inventar valores, aceitar somente preço atual inequívoco, tratar promoções aplicáveis e rejeitar conflitos, variantes ambíguas e indisponibilidade.
+- O decoder exige exatamente `item`, `found`, `unitPrice` e `sourceUrl`; normaliza caixa/espaços do item, aceita somente preço positivo e limita a fonte às URLs das evidências.
+- Respostas inválidas geram uma única nova chamada com a mesma evidência e instrução de correção. Erros de autenticação, transporte, limite e timeout não são repetidos; a falha externa permanece segura.
+- Foram adicionadas regressões para prompt, contrato, item incorreto, preço/fonte inválidos, campos extras, `found=false`, política de preço, fallback único, ausência de terceira chamada e falhas de transporte.
+- `npm run format:check`, `npm run lint`, `npm run typecheck`, `npm test` (27 arquivos, 186 testes), `npm run build` e `git diff --check` passaram.
+- A documentação em `docs/fontes-de-precos.md` registra o contrato e o comportamento definitivo. Não houve migration, RLS, Server Action, lock, persistência, UI ou dependência nova; `handoff.md` permanece não rastreado e fora do commit.
+
+## Correção pós-review do PR #22 — limite de concorrência do DeepSeek
+
+### Plano
+
+- [x] Extrair o limitador FIFO para helper reutilizável sem alterar a semântica do Firecrawl.
+- [x] Limitar chamadas iniciais e de recuperação do DeepSeek no cliente compartilhado.
+- [x] Iniciar timeout somente após a aquisição do permit e liberar o permit em todos os caminhos.
+- [x] Cobrir concorrência máxima, FIFO, falha, timeout em fila e regressão do coletor.
+- [x] Executar validações, revisar o diff e criar commit local sem incluir `handoff.md`.
+
+### Review
+
+- A thread P2 aberta no PR #22 apontou corretamente que o `Promise.all` por item iniciava retries do DeepSeek sem limitação compartilhada.
+- `createFifoLimiter` agora é reutilizado pelo Firecrawl e pelo DeepSeek; o cliente DeepSeek usa limite padrão de duas chamadas simultâneas, incluindo chamadas de recuperação.
+- O timeout só começa quando a chamada entra no provedor, e o permit é liberado em sucesso, falha de transporte, resposta inválida, HTTP e timeout por meio do `finally` do limitador.
+- Foram adicionados testes de FIFO, concorrência máxima, liberação após falha e timeout após espera na fila; os testes existentes do coletor continuam passando.

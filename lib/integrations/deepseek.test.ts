@@ -77,6 +77,120 @@ describe("DeepSeekClient", () => {
     expect(fetcher.mock.calls[0]?.[1]?.body).toContain('"thinking":{"type":"disabled"}');
   });
 
+  it("limita chamadas simultâneas e preserva a ordem FIFO", async () => {
+    const started: string[] = [];
+    const pending: Array<{
+      id: string;
+      resolve: (response: Response) => void;
+    }> = [];
+    let activeCount = 0;
+    let maxActiveCount = 0;
+    const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as {
+        messages: Array<{ content: string }>;
+      };
+      const id = body.messages[1]?.content ?? "";
+      started.push(id);
+      activeCount += 1;
+      maxActiveCount = Math.max(maxActiveCount, activeCount);
+
+      return new Promise<Response>((resolve) => {
+        pending.push({ id, resolve });
+      }).finally(() => {
+        activeCount -= 1;
+      });
+    });
+    const client = createDeepSeekClient({ environment: ENVIRONMENT, fetcher });
+    const requestFor = (id: string) =>
+      client.requestStructuredJson({
+        messages: [
+          { role: "system" as const, content: "Responda somente com JSON válido." },
+          { role: "user" as const, content: `JSON ${id}` },
+        ],
+        decode: decodeAmount,
+      });
+    const requests = ["a", "b", "c", "d"].map(requestFor);
+    const resolveRequest = (id: string) => {
+      const index = pending.findIndex((request) => request.id === id);
+      expect(index).toBeGreaterThanOrEqual(0);
+      pending.splice(index, 1)[0]?.resolve(jsonResponse(completion('{"amount": 10}')));
+    };
+
+    await vi.waitFor(() => expect(started).toEqual(["JSON a", "JSON b"]));
+    expect(maxActiveCount).toBe(2);
+
+    resolveRequest("JSON a");
+    await vi.waitFor(() => expect(started).toEqual(["JSON a", "JSON b", "JSON c"]));
+    resolveRequest("JSON b");
+    await vi.waitFor(() => expect(started).toEqual(["JSON a", "JSON b", "JSON c", "JSON d"]));
+    resolveRequest("JSON c");
+    resolveRequest("JSON d");
+
+    await expect(Promise.all(requests)).resolves.toHaveLength(4);
+    expect(maxActiveCount).toBe(2);
+    expect(fetcher).toHaveBeenCalledTimes(4);
+  });
+
+  it("libera o permit depois de uma falha e executa a chamada seguinte", async () => {
+    const fetcher = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("falha de rede"))
+      .mockResolvedValueOnce(jsonResponse(completion('{"amount": 10}')));
+    const client = createDeepSeekClient({
+      environment: ENVIRONMENT,
+      fetcher,
+      maxConcurrentRequests: 1,
+    });
+    const firstRequest = client.requestStructuredJson({ messages: MESSAGES, decode: decodeAmount });
+    const secondRequest = client.requestStructuredJson({
+      messages: MESSAGES,
+      decode: decodeAmount,
+    });
+
+    await expect(firstRequest).rejects.toMatchObject({
+      code: "provider_error",
+      retryable: true,
+    });
+    await expect(secondRequest).resolves.toMatchObject({ data: { amount: 10 } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("começa o timeout somente depois de adquirir o permit", async () => {
+    vi.useFakeTimers();
+    let callCount = 0;
+    const fetcher = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        });
+      }
+      return Promise.resolve(jsonResponse(completion('{"amount": 10}')));
+    });
+    const client = createDeepSeekClient({
+      environment: ENVIRONMENT,
+      fetcher,
+      maxConcurrentRequests: 1,
+      requestTimeoutMs: 10,
+    });
+    const firstRequest = client.requestStructuredJson({ messages: MESSAGES, decode: decodeAmount });
+    const secondRequest = client.requestStructuredJson({
+      messages: MESSAGES,
+      decode: decodeAmount,
+    });
+    const firstAssertion = expect(firstRequest).rejects.toMatchObject({ code: "timeout_error" });
+    const secondAssertion = expect(secondRequest).resolves.toMatchObject({
+      data: { amount: 10 },
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+    await firstAssertion;
+    await secondAssertion;
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("usa o modelo configurado sem validar a chave no carregamento do módulo", async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse(completion('{"amount": 10}')));
     const client = createDeepSeekClient({

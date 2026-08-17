@@ -5,6 +5,7 @@ import {
   type StructuredJsonRequest,
   type StructuredJsonResponse,
 } from "@/lib/integrations/deepseek";
+import { IntegrationError } from "@/lib/integrations/errors";
 import {
   sourceCollector,
   type SourceCollectionResult,
@@ -14,6 +15,20 @@ import {
 import type { ItemCategory } from "@/types";
 
 const MAX_EVIDENCE_CHARS_PER_SOURCE = 2_500;
+const EXTRACTION_SYSTEM_PROMPT =
+  "Responda somente com um objeto JSON válido. Extraia preço exclusivamente das evidências fornecidas; nunca estime, complete ou invente valores.";
+const EXTRACTION_INSTRUCTION = [
+  "Retorne exatamente os campos item, found, unitPrice e sourceUrl, sem markdown ou texto adicional.",
+  "Repita em item o nome solicitado.",
+  "Use found=true somente quando houver um preço atual, positivo e inequivocamente associado ao item e à apresentação solicitada.",
+  "Converta o preço para número em reais, usando ponto decimal e sem o símbolo R$.",
+  "Quando houver promoção claramente vigente e aplicável ao item, use o preço promocional atual e ignore o preço antigo.",
+  "Rejeite preços conflitantes, variantes ou apresentações ambíguas, promoções condicionais não confirmadas e itens indisponíveis.",
+  "Se não houver preço inequívoco, retorne found=false, unitPrice=null e sourceUrl=null.",
+  "Quando found=true, use exatamente uma sourceUrl presente nas evidências.",
+].join(" ");
+const EXTRACTION_REPAIR_INSTRUCTION = `${EXTRACTION_INSTRUCTION} A resposta anterior era inválida. Corrija o formato e retorne somente o objeto JSON exato, sem adicionar campos.`;
+const EXTRACTION_FIELDS = new Set(["item", "found", "unitPrice", "sourceUrl"]);
 
 export type PendingPriceItem = {
   id: string;
@@ -41,6 +56,7 @@ type PriceEstimatorDependencies = {
 };
 
 type ExtractedPrice = {
+  item: string;
   found: boolean;
   unitPrice: number | null;
   sourceUrl: string | null;
@@ -76,6 +92,10 @@ function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function normalizeItemName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
 function formatEvidence(results: readonly FoundSourceResult[]) {
   return results.map((result, index) => ({
     index: index + 1,
@@ -86,8 +106,18 @@ function formatEvidence(results: readonly FoundSourceResult[]) {
   }));
 }
 
-function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>): ExtractedPrice {
-  if (!isRecord(value)) {
+function decodeExtractedPrice(
+  value: unknown,
+  requestedItem: string,
+  allowedUrls: ReadonlySet<string>,
+): ExtractedPrice {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).length !== EXTRACTION_FIELDS.size ||
+    Object.keys(value).some((key) => !EXTRACTION_FIELDS.has(key)) ||
+    typeof value.item !== "string" ||
+    normalizeItemName(value.item) !== normalizeItemName(requestedItem)
+  ) {
     throw new TypeError("Resposta de preço inválida.");
   }
 
@@ -99,7 +129,7 @@ function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>):
     if (value.unitPrice !== null || value.sourceUrl !== null) {
       throw new TypeError("Resposta de preço inválida.");
     }
-    return { found: false, unitPrice: null, sourceUrl: null };
+    return { item: requestedItem, found: false, unitPrice: null, sourceUrl: null };
   }
 
   if (
@@ -113,6 +143,7 @@ function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>):
   }
 
   return {
+    item: requestedItem,
     found: true,
     unitPrice: value.unitPrice,
     sourceUrl: value.sourceUrl,
@@ -122,22 +153,22 @@ function decodeExtractedPrice(value: unknown, allowedUrls: ReadonlySet<string>):
 function buildExtractionRequest(
   item: PendingPriceItem,
   sourceResults: readonly FoundSourceResult[],
+  mode: "initial" | "repair" = "initial",
 ) {
   const evidence = formatEvidence(sourceResults);
   const allowedUrls = new Set(evidence.map((result) => result.url));
+  const instruction = mode === "repair" ? EXTRACTION_REPAIR_INSTRUCTION : EXTRACTION_INSTRUCTION;
 
   return {
     messages: [
       {
         role: "system" as const,
-        content:
-          "Responda somente em JSON. Extraia um preço unitário apenas das evidências fornecidas; nunca estime ou invente valores.",
+        content: EXTRACTION_SYSTEM_PROMPT,
       },
       {
         role: "user" as const,
         content: JSON.stringify({
-          instruction:
-            "Retorne {found:boolean,unitPrice:number|null,sourceUrl:string|null}. Use exatamente uma sourceUrl fornecida. Se não houver preço inequívoco, retorne found=false e campos nulos.",
+          instruction,
           item: {
             name: item.name,
             quantity: item.quantity,
@@ -148,8 +179,28 @@ function buildExtractionRequest(
       },
     ],
     maxTokens: 256,
-    decode: (value: unknown) => decodeExtractedPrice(value, allowedUrls),
+    decode: (value: unknown) => decodeExtractedPrice(value, item.name, allowedUrls),
   } satisfies StructuredJsonRequest<ExtractedPrice>;
+}
+
+async function requestPriceExtraction(
+  deepSeek: DeepSeekPort,
+  item: PendingPriceItem,
+  sourceResults: readonly FoundSourceResult[],
+) {
+  try {
+    return await deepSeek.requestStructuredJson(buildExtractionRequest(item, sourceResults));
+  } catch (error) {
+    if (
+      !(error instanceof IntegrationError) ||
+      error.provider !== "deepseek" ||
+      error.code !== "invalid_response_error"
+    ) {
+      throw error;
+    }
+
+    return deepSeek.requestStructuredJson(buildExtractionRequest(item, sourceResults, "repair"));
+  }
 }
 
 export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
@@ -179,8 +230,10 @@ export function createPriceEstimator(dependencies: PriceEstimatorDependencies) {
               : { kind: "not_found" };
           }
 
-          const extraction = await dependencies.deepSeek.requestStructuredJson(
-            buildExtractionRequest(item, foundSources),
+          const extraction = await requestPriceExtraction(
+            dependencies.deepSeek,
+            item,
+            foundSources,
           );
 
           if (!extraction.data.found || extraction.data.unitPrice === null) {

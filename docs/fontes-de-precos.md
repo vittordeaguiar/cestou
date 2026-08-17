@@ -167,3 +167,30 @@ instância do coletor. Falhas do provedor continuam tipadas internamente e não 
 mensagens, payloads ou credenciais ao usuário. A validação automatizada usa mocks; a
 validação real depende de `FIRECRAWL_API_KEY` e deve registrar somente status, URL e
 preço observado.
+
+## V-60 — Estruturação definitiva pelo DeepSeek
+
+As evidências encontradas são enviadas ao DeepSeek com um prompt fixo que proíbe
+inferências e exige exatamente o objeto JSON abaixo:
+
+```json
+{
+  "item": "Arroz",
+  "found": true,
+  "unitPrice": 10.9,
+  "sourceUrl": "https://exemplo.test/arroz"
+}
+```
+
+`item` precisa corresponder ao item solicitado, `unitPrice` deve ser um número positivo
+e `sourceUrl` deve ser uma URL presente nas evidências encaminhadas. Promoção só é
+aceita quando estiver claramente vigente e aplicável; preço antigo, condição promocional
+não confirmada, variante ambígua, conflito entre valores ou indisponibilidade produzem
+`found: false` com `unitPrice` e `sourceUrl` nulos.
+
+Se a resposta do DeepSeek for inválida ou incompatível com esse contrato, a estimativa
+faz uma única nova chamada com as mesmas evidências e uma instrução de correção. Falhas
+de transporte, autenticação, limite ou timeout não são repetidas nessa camada e seguem
+como falhas tipadas para o tratamento posterior. Todas as chamadas iniciais e de
+recuperação passam por uma fila FIFO de no máximo duas requisições simultâneas por
+instância do cliente DeepSeek; o timeout começa somente após a chamada adquirir espaço.
